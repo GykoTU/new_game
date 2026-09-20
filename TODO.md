@@ -59,6 +59,7 @@ First loop the player can actually watch happen.
 - [ ] Target scoring by `threat_priority` and distance
 - [ ] Enemies break walls when walls block their path
 - [ ] Building damage and destruction
+- [ ] Impulse channel on enemy movement (knockback, pulls, hooks)
 
 ## Stage 5 — Weapons
 
@@ -66,6 +67,9 @@ First loop the player can actually watch happen.
 - [ ] Projectile SoA store, supercover grid traversal, wall blocking
 - [ ] Friendly fire on units, as a per-projectile flag
 - [ ] Targeting rules (nearest, strongest, first in range)
+- [ ] Behaviour hook system: shared behaviour sets, per-shot scratch slots
+- [ ] Behaviours: bounce, split, pierce, chain, homing, hook
+- [ ] Generation counters and pool ceilings so split/chain cannot run away
 - [ ] Particles within the entity budget
 
 ## Stage 6 — Walls, roads, expansion

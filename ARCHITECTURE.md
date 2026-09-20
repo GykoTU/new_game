@@ -73,6 +73,13 @@ enemies sharing a target share one field. A small cache (~8 slots) covers the
 handful of buildings actually under attack. Fields are recomputed only when the
 blocking grid changes or a cached target dies — never per frame, never per enemy.
 
+### D6 — Behaviours are effect hooks, not stat modifiers
+The stat system moves numbers. It cannot express "shots split into two",
+"shots bounce off walls" or "hook enemies". Those are *behaviours*, and they get
+their own mechanism: an ordered set of effect hooks fired at points in a
+projectile's life. Keeping the two systems separate is what lets a numeric
+upgrade and a behavioural one compose without either knowing about the other.
+
 ---
 
 ## 4. Runtime structure
@@ -174,11 +181,60 @@ so a cluster of mines and worker houses can outrank the base itself. They break
 through walls when a wall blocks the path to their chosen target. Retargeting
 happens on an interval and when a target dies, not every frame.
 
+Enemy position integration takes an **impulse channel** layered on top of
+flow-field steering: a per-enemy velocity offset that decays over time. Knockback,
+pulls and hook effects write to it rather than fighting the pathing. Without this
+channel no weapon can ever physically move an enemy, and retrofitting it means
+touching every movement path.
+
 ### Combat
 Projectiles carry `friendly_fire: bool`, default **true**. They stop at walls
 (D1/D4) and damage the first unit they overlap regardless of faction. Making
 that a per-projectile flag rather than a global rule gives augments a lever —
 "your projectiles pass through workers" is a meaningful late pick.
+
+### Weapon behaviours and effect hooks
+
+Behavioural upgrades are the interesting half of the weapon design, and they
+need a mechanism the stat system cannot provide (D6).
+
+Each projectile carries a `behaviour_set` id pointing at a shared, immutable,
+pre-compiled list of behaviours. The set is shared by every projectile from that
+weapon, so adding behaviours costs no per-projectile memory. Mutable per-shot
+state — bounces left, splits left, hooked target — lives in a few generic scratch
+slots in the projectile arrays.
+
+Hooks, fired in priority order:
+
+    on_spawn(p)                  # aim, spread, initial buffs
+    on_step(p, dt)               # homing, acceleration, orbiting
+    on_wall_hit(p, cell, normal) # bounce, pierce, stop, detonate
+    on_unit_hit(p, unit)         # damage, split, hook, chain, pierce
+    on_expire(p)                 # detonate, drop a field
+    on_kill(p, unit)             # on-kill triggers, resource drops
+
+Hooks fire on *events*, not per projectile per frame — `on_step` is the only
+per-frame hook and most behaviours do not implement it. So a few hundred
+projectiles cost a few hundred cheap array updates plus a handful of hook calls
+where something actually happened.
+
+Worked examples, to show the composition is real:
+
+- **Bounce** — `on_wall_hit` reflects velocity about the tile normal and
+  decrements a scratch counter; stops when it hits zero.
+- **Split** — `on_unit_hit` spawns N children inheriting the behaviour set with
+  a generation counter incremented.
+- **Hook** — `on_unit_hit` stores the unit id and switches the projectile to a
+  returning state; `on_step` applies an impulse to the hooked enemy each step.
+
+Bounce and split compose without either knowing the other exists, which is the
+whole point.
+
+**Budget discipline.** Split, chain and bounce multiply entity counts, and
+split-of-split is exponential. Every projectile carries a generation counter, sets
+declare a max generation, and the projectile pool has a hard ceiling; when the
+pool is full, new spawns are dropped rather than growing the arrays. An augment
+combination must never be able to stall the game.
 
 ### Stats and modifiers
 Every tunable value resolves through a stat block with explicit layers:
@@ -260,6 +316,8 @@ Working targets, to be measured rather than assumed:
 - Broadphase for hit tests is a spatial hash bucketed at a few tiles per cell,
   rebuilt each simulation step.
 - Flow fields recompute only on structural change.
+- Hard ceilings on the enemy and projectile pools; spawns are dropped when full,
+  so no augment combination can grow the arrays without bound.
 - Allocation in the hot loop is avoided: arrays are preallocated and entities
   are recycled through free lists rather than created and freed.
 
