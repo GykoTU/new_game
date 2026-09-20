@@ -7,6 +7,7 @@
 [node name="level_generator" type="Node2D" unique_id=132605351]
 script = ExtResource("1_ty8jg")
 map_size = Vector2i(100, 100)
+generate_on_ready = false
 mine_chance = 1.0
 sand_width = 2
 tree_chance_grass = 0.0

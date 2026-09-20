@@ -109,7 +109,100 @@ a `main.tscn` scene tree so the structure is visible and editable in the editor.
 
 ---
 
-## 5. Grid layers
+## 5. Time and the update loop
+
+Implemented. `game/game_clock.gd` and `game/main.gd`.
+**Diagram: [`docs/frame-pipeline.svg`](docs/frame-pipeline.svg)** — the frame
+pipeline and the sub-stepping rationale, drawn out. Keep it in step with this
+section when either changes.
+
+This is the most fragile part of the codebase to change, because nothing about
+it is visible on screen and almost everything depends on it.
+
+### Speed adds ticks; it never scales dt
+
+`GameClock` holds a constant `TICK_DELTA` of 1/60s and an accumulator. Each
+frame `advance(delta)` returns how many whole ticks to run: speed 2 returns
+twice as many, speed 0.5 returns one every other frame, speed 0 returns none.
+
+The tempting alternative — `dt = delta * speed` — is wrong for this game and
+must not be reintroduced. Collision here is sampled, not swept: projectiles walk
+the blocking grid (D4) and units test a spatial hash. Multiplying dt multiplies
+the distance covered between two samples, so at 4x a fast projectile can have
+one sample before a one-tile wall and the next beyond it, and passes through.
+Sub-stepping keeps every sample the same distance apart at every speed, so
+behaviour at 4x is identical to 1x, only more of it.
+
+`MAX_TICKS_PER_FRAME` (8) caps the work one frame can request. Without it a slow
+frame asks for more ticks next frame, which makes that frame slower still. When
+the cap is hit, simulation time falls behind wall-clock time deliberately: the
+game slows down rather than locking up.
+
+### Main owns the order; the clock only owns time
+
+`GameClock` has **no `_process` of its own**, on purpose. Godot calls `_process`
+on a parent before its children, so a self-ticking clock would always be one
+frame stale by the time `Main` read it. `Main._process` calls
+`clock.advance(delta)` and then `_simulate(TICK_DELTA)` once per tick.
+
+Systems are stepped by **explicit calls in `_simulate()`, never by connecting to
+a signal.** Signal handlers run in connection order, which is invisible at the
+call site and silently changes when connection code is reordered. Simulation
+order is load-bearing — enemies move, then projectiles step, then hits resolve,
+then damage applies — so it is written down in one readable list. The intended
+order is in the diagram; systems join it as they are built.
+
+High-frequency gameplay events stay out of `EventBus` for the same reason
+(section 8): signal dispatch hundreds of times per tick is a real cost, and the
+ordering is invisible.
+
+### Pausing is a set of reasons, not a boolean
+
+The options menu, the augment screen and the player's own pause key all stop
+time. With a flag, closing the options menu would resume a run the player had
+deliberately paused. So the clock holds a set of named reasons and runs only
+when it is empty and `speed > 0`. Whoever pushes a reason pops it:
+
+    clock.push_pause("options_menu")   # main.gd, on menu visibility
+    clock.toggle_player_pause()        # the player's own pause key
+
+`get_tree().paused` is deliberately **not** used. Freezing the tree would also
+freeze menu animation and tweens; freezing only simulation keeps the UI alive
+while the world stands still. Anything that pauses the world in future should
+push a reason rather than reach for the tree.
+
+On resume the accumulator is discarded, so time spent in a menu is never banked
+and replayed as a burst of ticks.
+
+### tick_count is the run's clock
+
+`tick_count` advances only while the clock runs, so it is unaffected by frame
+rate, pausing and speed. It — not wall-clock time — is what day length, wave
+timing, the survival XP drip and the run save should be measured in. Using real
+seconds anywhere in gameplay would make those depend on the player's frame rate
+and pause habits.
+
+### Input actions
+
+`game_pause` (Space), `game_speed_1/2/3` (1, 2, 3 -> 1x, 2x, 4x), bound by
+physical keycode so keyboard layout does not matter. The avatar-era `jump`,
+`left` and `right` actions were removed.
+
+### Scene ownership
+
+`main.tscn` holds the run tree (section 4) instead of building it procedurally.
+One consequence: children are readied before their parent, so `Level` would
+generate a map before `main.gd` could decide a save should be loaded instead.
+`generate_on_ready` is therefore false and `main.gd` calls `generate()` or
+`load_save_data()` explicitly. Generation is never implicit.
+
+Note for hand-edited scene files: a node property that references another node
+needs `node_paths=PackedStringArray("prop")` in its `[node]` header, or the
+stored `NodePath` is never resolved and the property is silently null at runtime.
+
+---
+
+## 6. Grid layers
 
 All grids are flat packed arrays indexed `y * map_size.x + x`. Never a
 `Dictionary` keyed by `Vector2i` — at 65k cells that costs roughly two orders of
@@ -133,7 +226,7 @@ testing before it becomes a rule.
 
 ---
 
-## 6. Systems
+## 7. Systems
 
 ### GameClock
 Owns `speed` (0 = paused, 1 = normal, plus faster steps) and emits `sim_delta`.
@@ -257,7 +350,7 @@ designed for yet.
 
 ---
 
-## 7. EventBus contract
+## 8. EventBus contract
 
 Signals only; no state, no logic. Existing signals are kept; the set grows to:
 
@@ -284,7 +377,7 @@ cost; those stay as direct calls inside the owning system.
 
 ---
 
-## 8. Save format
+## 9. Save format
 
 Two files, deliberately separate.
 
@@ -304,7 +397,7 @@ The current `SaveManager` is debug scaffolding and is replaced by this.
 
 ---
 
-## 9. Performance budget
+## 10. Performance budget
 
 Working targets, to be measured rather than assumed:
 
@@ -323,12 +416,11 @@ Working targets, to be measured rather than assumed:
 
 ---
 
-## 10. Known issues in existing code
+## 11. Known issues in existing code
 
 - `LevelGenerator.remove_building` erases from `_occupied` while iterating its
   own keys, which can skip entries.
 - `_occupied` and `buildings` are `Dictionary` keyed by `Vector2i`; both become
   flat arrays (section 5).
-- `main.gd` builds its tree procedurally; moves into `main.tscn`.
-- `project.godot` still defines `jump`, `left` and `right` input actions from an
-  avatar that no longer exists.
+- ~~`main.gd` builds its tree procedurally~~ — done, now `main.tscn`.
+- ~~`project.godot` defines dead avatar input actions~~ — done, removed.

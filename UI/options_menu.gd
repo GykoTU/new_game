@@ -13,9 +13,10 @@ func _unhandled_input(event):
 		toggle()
 		get_viewport().set_input_as_handled()
 
+## main.gd watches visibility_changed and pushes a clock pause reason, so the
+## world freezes while this menu keeps animating. Do not use get_tree().paused.
 func toggle():
 	visible = not visible
-	get_tree().paused = visible
 
 func _on_volume_slider_value_changed(value):
 	Settings.volume = value
@@ -31,6 +32,5 @@ func _on_resume_button_pressed():
 	toggle()
 
 func _on_quit_to_title_button_pressed():
-	get_tree().paused = false
 	EventBus.on_quit_button_pressed.emit()
 	get_tree().change_scene_to_file("res://game/title_screen.tscn")

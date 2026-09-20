@@ -1,6 +1,35 @@
-[gd_scene format=3 uid="uid://5td4ornbutf7"]
+[gd_scene load_steps=10 format=3 uid="uid://5td4ornbutf7"]
 
-[ext_resource type="Script" uid="uid://byhj7xovxw0ym" path="res://game/main.gd" id="1_ig7tw"]
+[ext_resource type="Script" uid="uid://byhj7xovxw0ym" path="res://game/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://game/game_clock.gd" id="2_clock"]
+[ext_resource type="PackedScene" uid="uid://ba1pylps5g46u" path="res://Level/level_generator.tscn" id="3_level"]
+[ext_resource type="Script" uid="uid://yd7fcx2e04nv" path="res://buildings/build_placer.gd" id="4_placer"]
+[ext_resource type="PackedScene" uid="uid://btlwwf6vbim4k" path="res://game/camera.tscn" id="5_camera"]
+[ext_resource type="PackedScene" uid="uid://dodtrnf8whylb" path="res://UI/options_menu.tscn" id="6_options"]
+[ext_resource type="PackedScene" uid="uid://bfcg0pbj8dpnl" path="res://UI/shop_ui.tscn" id="7_shop"]
+[ext_resource type="PackedScene" uid="uid://ca7a023oia6qk" path="res://UI/building_ui.tscn" id="8_building"]
+[ext_resource type="PackedScene" uid="uid://xjsbgru4486i" path="res://UI/worker_ui.tscn" id="9_worker"]
 
-[node name="Main" type="Node2D" unique_id=1993604475]
-script = ExtResource("1_ig7tw")
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+
+[node name="GameClock" type="Node" parent="."]
+script = ExtResource("2_clock")
+
+[node name="Level" parent="." instance=ExtResource("3_level")]
+
+[node name="BuildPlacer" type="Node2D" parent="." node_paths=PackedStringArray("level")]
+script = ExtResource("4_placer")
+level = NodePath("../Level")
+
+[node name="Camera" parent="." instance=ExtResource("5_camera")]
+
+[node name="UI" type="Node" parent="."]
+
+[node name="OptionsMenu" parent="UI" instance=ExtResource("6_options")]
+
+[node name="ShopUI" parent="UI" instance=ExtResource("7_shop")]
+
+[node name="BuildingUI" parent="UI" instance=ExtResource("8_building")]
+
+[node name="WorkerUI" parent="UI" instance=ExtResource("9_worker")]

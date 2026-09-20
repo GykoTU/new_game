@@ -13,16 +13,17 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done
 The load-bearing work. Nothing here is fun, and everything after it is cheaper
 because of it.
 
-- [ ] Move `main.gd`'s procedural tree into `main.tscn`
-- [ ] `GameClock`: speed control, pause, `sim_delta` fan-out
+- [x] Move `main.gd`'s procedural tree into `main.tscn`
+- [x] `GameClock`: fixed-tick sub-stepping, pause reasons, ordered update loop
 - [ ] Convert `_occupied` / `buildings` from Dictionary to flat packed arrays
 - [ ] Add `blocking` and `cost` grids alongside `ground`
 - [ ] Fix `remove_building` iteration bug
 - [ ] Spatial hash for unit broadphase
 - [ ] Stat/modifier system (base, flat, increase, multiplier layers)
 - [ ] Rewrite `SaveManager`: run save + profile save, versioned, migrations
-- [ ] Expand `EventBus` to the contract in ARCHITECTURE.md section 7
-- [ ] Remove the dead `jump` / `left` / `right` input actions
+- [~] Expand `EventBus` to the contract in ARCHITECTURE.md section 8
+      (`game_speed_changed` added; the rest lands with its system)
+- [x] Remove the dead `jump` / `left` / `right` input actions
 
 ## Stage 1 — Economy skeleton
 
@@ -96,7 +97,7 @@ First loop the player can actually watch happen.
 
 ## Continuous
 
-- [ ] Keep ARCHITECTURE.md current as systems land
+- [ ] Keep ARCHITECTURE.md and docs/frame-pipeline.svg current as systems land
 - [ ] Headless parse check before handing over any change
 - [ ] Profile against the Stage-4/5 entity budget on the low-spec target
 
