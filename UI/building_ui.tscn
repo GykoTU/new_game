@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://ca7a023oia6qk"]
+
+[ext_resource type="Script" uid="uid://bahsfocy1n2px" path="res://UI/building_ui.gd" id="1_1wrbn"]
+
+[node name="BuildingUI" type="CanvasLayer" unique_id=1850759088]
+
+[node name="BuildingUI" type="VBoxContainer" parent="." unique_id=47586603]
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_top = -20.0
+offset_right = 40.0
+offset_bottom = 20.0
+grow_vertical = 2
+script = ExtResource("1_1wrbn")
+
+[node name="Panel" type="Panel" parent="BuildingUI" unique_id=346214315]
+layout_mode = 2

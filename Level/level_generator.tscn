@@ -2,10 +2,7 @@
 
 [ext_resource type="Script" uid="uid://b408t78yaqkt" path="res://Level/level_generator.gd" id="1_ty8jg"]
 [ext_resource type="Script" uid="uid://cmw2phfafd342" path="res://buildings/building_data.gd" id="2_0gvok"]
-
-[sub_resource type="Resource" id="Resource_egh7j"]
-script = ExtResource("2_0gvok")
-metadata/_custom_type_script = "uid://cmw2phfafd342"
+[ext_resource type="Resource" uid="uid://dlgd1432du55j" path="res://buildings/base.tres" id="3_egh7j"]
 
 [node name="level_generator" type="Node2D" unique_id=132605351]
 script = ExtResource("1_ty8jg")
@@ -14,4 +11,4 @@ mine_chance = 1.0
 sand_width = 2
 tree_chance_grass = 0.0
 tree_chance_flowers = 0.078
-placeable_buildings = Array[ExtResource("2_0gvok")]([SubResource("Resource_egh7j")])
+placeable_buildings = Array[ExtResource("2_0gvok")]([ExtResource("3_egh7j")])

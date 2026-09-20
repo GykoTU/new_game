@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://bfcg0pbj8dpnl"]
+
+[ext_resource type="Script" uid="uid://b8xwv8egfukyq" path="res://UI/shop_ui.gd" id="1_5pilf"]
+[ext_resource type="Script" uid="uid://21gthjymbggt" path="res://UI/shop_items.gd" id="2_imt7e"]
+
+[node name="ShopUI" type="CanvasLayer" unique_id=189571316]
+script = ExtResource("1_5pilf")
+
+[node name="ShopItems" type="GridContainer" parent="." unique_id=1664266067]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("2_imt7e")
+
+[node name="Panel" type="Panel" parent="ShopItems" unique_id=1136350628]
+layout_mode = 2
