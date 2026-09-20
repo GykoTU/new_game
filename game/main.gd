@@ -17,7 +17,7 @@ const PAUSE_OPTIONS := "options_menu"
 
 
 func _ready() -> void:
-	EventBus.on_quit_button_pressed.connect(save_level)
+	EventBus.on_quit_button_pressed.connect(save_run)
 	level.level_generated.connect(_on_level_generated)
 	build_placer.placement_finished.connect(_on_placement_finished)
 	options_menu.visibility_changed.connect(_on_options_visibility_changed)
@@ -25,13 +25,20 @@ func _ready() -> void:
 	# The level no longer generates itself on _ready: children are readied
 	# before their parent, so it would have built a map before this node could
 	# decide that a save should be loaded instead. Generation is explicit now.
-	var save := SaveManager.load_game()
-	if save.is_empty():
+	# A save this build cannot read is treated as no save at all, rather than
+	# leaving the player in a half-built world.
+	var save := SaveManager.load_run()
+	var loaded := false
+	if save.has("level"):
+		loaded = level.load_save_data(save["level"])
+	if loaded:
+		if save.has("clock"):
+			clock.load_save_data(save["clock"])
+	else:
 		level.generate()
+		_count_run_started()
 		# New game: the player picks where the base goes. It can't be cancelled.
 		build_placer.start("base", false)
-	else:
-		level.load_save_data(save["level"])
 
 
 func _process(delta: float) -> void:
@@ -71,8 +78,22 @@ func _on_options_visibility_changed() -> void:
 		clock.pop_pause(PAUSE_OPTIONS)
 
 
-func save_level() -> void:
-	SaveManager.save_game(level)
+## Assembles everything a run needs to resume. Systems own their own save
+## shape; this function only decides which of them are in a run save.
+func save_run() -> void:
+	var ok := SaveManager.save_run({
+		"level": level.get_save_data(),
+		"clock": clock.get_save_data(),
+		# resources, progression and the day/night director join this as they
+		# are built. SaveManager neither knows nor cares what these keys mean.
+	})
+	if not ok:
+		push_error("Main: the run could not be saved.")
+
+
+func _count_run_started() -> void:
+	SaveManager.profile["runs_started"] = int(SaveManager.profile.get("runs_started", 0)) + 1
+	SaveManager.save_profile()
 
 
 # --- Input --------------------------------------------------------------------

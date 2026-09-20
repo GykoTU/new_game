@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 1000" width="1040" height="1000">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b675f"/>
+    </marker>
+    <style>
+      .t  { font-family: ui-sans-serif,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; fill:#2b2a27; }
+      .m  { font-family: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace; fill:#2b2a27; }
+      .mu { fill:#6b675f; }
+      .h1 { font-size:26px; font-weight:700; }
+      .h2 { font-size:17px; font-weight:700; }
+      .lb { font-size:14px; font-weight:600; }
+      .bd { font-size:13px; }
+      .sm { font-size:12px; }
+      .xs { font-size:10.5px; }
+      .box  { fill:#ffffff; stroke:#ccc5b9; stroke-width:1.5; }
+      .note { fill:#faf9f6; stroke:#ddd7cd; stroke-width:1.2; stroke-dasharray:4 3; }
+      .drv  { fill:#f1f6fd; stroke:#7ba4d4; stroke-width:1.6; }
+      .src  { fill:#fff8ef; stroke:#e09a4e; stroke-width:1.6; }
+      .ar   { stroke:#6b675f; stroke-width:1.6; fill:none; marker-end:url(#a); }
+      .cell { stroke:#b9b2a6; stroke-width:1; }
+    </style>
+  </defs>
+  <rect width="1040" height="1000" fill="#fdfcfa"/>
+
+  <text class="t h1" x="40" y="46">Grid layers and the building store</text>
+  <text class="t sm mu" x="40" y="70">One map is six flat arrays plus a record store. Nothing is keyed by Vector2i. See ARCHITECTURE.md, "Grid layers".</text>
+
+  <!-- ===== layer stack ===== -->
+  <text class="t h2" x="40" y="116">A &#183; The same four tiles, seen through each layer</text>
+  <text class="t sm mu" x="40" y="138">Tiles 40&#8211;43 of a row: open grass, grass under a 2-wide depot, and water.</text>
+
+  <g transform="translate(40,162)">
+    <text class="m sm mu" x="0" y="12">index</text>
+    <text class="m sm mu" x="150" y="12">40</text><text class="m sm mu" x="230" y="12">41</text>
+    <text class="m sm mu" x="310" y="12">42</text><text class="m sm mu" x="390" y="12">43</text>
+
+    <!-- ground -->
+    <rect class="src" x="140" y="24" width="320" height="46" rx="4"/>
+    <line class="cell" x1="220" y1="24" x2="220" y2="70"/><line class="cell" x1="300" y1="24" x2="300" y2="70"/>
+    <line class="cell" x1="380" y1="24" x2="380" y2="70"/>
+    <text class="m lb" x="0" y="53">ground</text>
+    <text class="t xs mu" x="0" y="68">PackedByteArray</text>
+    <text class="m sm" x="150" y="53">GRASS_1</text><text class="m sm" x="230" y="53">GRASS_1</text>
+    <text class="m sm" x="310" y="53">GRASS_1</text><text class="m sm" x="390" y="53">WATER</text>
+
+    <!-- occupancy -->
+    <rect class="src" x="140" y="86" width="320" height="46" rx="4"/>
+    <line class="cell" x1="220" y1="86" x2="220" y2="132"/><line class="cell" x1="300" y1="86" x2="300" y2="132"/>
+    <line class="cell" x1="380" y1="86" x2="380" y2="132"/>
+    <text class="m lb" x="0" y="115">occupancy</text>
+    <text class="t xs mu" x="0" y="130">PackedInt32Array</text>
+    <text class="m sm mu" x="158" y="115">-1</text>
+    <text class="m sm" x="245" y="115">7</text><text class="m sm" x="325" y="115">7</text>
+    <text class="m sm mu" x="398" y="115">-1</text>
+
+    <path class="ar" d="M300,140 L300,168"/>
+    <text class="t sm mu" x="316" y="160">derived from both</text>
+
+    <!-- blocking -->
+    <rect class="drv" x="140" y="170" width="320" height="46" rx="4"/>
+    <line class="cell" x1="220" y1="170" x2="220" y2="216"/><line class="cell" x1="300" y1="170" x2="300" y2="216"/>
+    <line class="cell" x1="380" y1="170" x2="380" y2="216"/>
+    <text class="m lb" x="0" y="199">blocking</text>
+    <text class="t xs mu" x="0" y="214">PackedByteArray</text>
+    <text class="m sm mu" x="165" y="199">0</text>
+    <text class="m sm" x="228" y="199">UNIT</text><text class="m sm" x="308" y="199">UNIT</text>
+    <text class="m sm" x="386" y="199">UNIT</text>
+
+    <!-- cost -->
+    <rect class="drv" x="140" y="232" width="320" height="46" rx="4"/>
+    <line class="cell" x1="220" y1="232" x2="220" y2="278"/><line class="cell" x1="300" y1="232" x2="300" y2="278"/>
+    <line class="cell" x1="380" y1="232" x2="380" y2="278"/>
+    <text class="m lb" x="0" y="261">cost</text>
+    <text class="t xs mu" x="0" y="276">PackedByteArray</text>
+    <text class="m sm" x="160" y="261">10</text>
+    <text class="m sm" x="235" y="261">255</text><text class="m sm" x="315" y="261">255</text>
+    <text class="m sm" x="395" y="261">255</text>
+  </g>
+
+  <rect class="note" x="540" y="186" width="460" height="256" rx="7"/>
+  <text class="t lb" x="562" y="212">Reading the columns</text>
+  <text class="t bd" x="562" y="238">Tile 40 is plain grass: nothing blocks, cost 10.</text>
+  <text class="t bd" x="562" y="262">Tiles 41 and 42 are grass with building 7 on top.</text>
+  <text class="t bd" x="562" y="283">Same terrain as 40, different derived values.</text>
+  <text class="t bd" x="562" y="310">Tile 43 is water: blocked by terrain alone, with no</text>
+  <text class="t bd" x="562" y="331">building involved.</text>
+  <text class="t bd" x="562" y="360">255 means impassable, never "very expensive".</text>
+  <text class="t bd" x="562" y="381">Pathing must treat it as a wall, not as a bad route.</text>
+  <text class="t bd" x="562" y="410">Water, void and lava block on terrain alone. That is</text>
+  <text class="t bd" x="562" y="431">the expansion gate: boats, bridges, cooling lava.</text>
+
+  <!-- ===== store ===== -->
+  <line x1="40" y1="480" x2="1000" y2="480" stroke="#e2ddd4" stroke-width="1.5"/>
+  <text class="t h2" x="40" y="520">B &#183; occupancy holds an id, not a building</text>
+  <text class="t sm mu" x="40" y="542">One indirection, so a building's data lives in one place no matter how many tiles it covers.</text>
+
+  <rect class="src" x="40" y="566" width="300" height="60" rx="6"/>
+  <text class="m lb" x="60" y="592">occupancy[41] == 7</text>
+  <text class="t sm mu" x="60" y="613">a tile knows only an id</text>
+
+  <path class="ar" d="M348,596 L410,596"/>
+
+  <rect class="box" x="418" y="556" width="582" height="190" rx="6"/>
+  <text class="m lb" x="440" y="582">BuildingStore, parallel arrays indexed by id</text>
+  <text class="m bd" x="440" y="610">_type[7] = "depot"</text>
+  <text class="m bd" x="440" y="632">_cell_x[7] = 41</text><text class="m bd" x="690" y="632">_cell_y[7] = 12</text>
+  <text class="m bd" x="440" y="654">_size_x[7] = 2</text><text class="m bd" x="690" y="654">_size_y[7] = 1</text>
+  <text class="m bd" x="440" y="676">_health[7] = 100.0</text><text class="m bd" x="690" y="676">_max_health[7] = 100.0</text>
+  <text class="m bd" x="440" y="698">_sprite[7] = Sprite2D</text>
+  <text class="t sm mu" x="440" y="728">Ids come from a free list and are reused after removal.</text>
+
+  <rect class="note" x="40" y="646" width="300" height="100" rx="7"/>
+  <text class="t bd" x="60" y="670">Removal clears a known rectangle:</text>
+  <text class="m sm" x="60" y="692">cell + size, straight from the record.</text>
+  <text class="t bd" x="60" y="716">There is no dictionary to scan, and</text>
+  <text class="t bd" x="60" y="736">none to corrupt while iterating it.</text>
+
+  <!-- ===== rules ===== -->
+  <line x1="40" y1="786" x2="1000" y2="786" stroke="#e2ddd4" stroke-width="1.5"/>
+  <text class="t h2" x="40" y="826">C &#183; Rules to keep</text>
+
+  <rect class="note" x="40" y="846" width="300" height="120" rx="7"/>
+  <text class="t lb" x="60" y="872">Never key by Vector2i</text>
+  <text class="t bd" x="60" y="896">A Dictionary keyed by Vector2i costs</text>
+  <text class="t bd" x="60" y="916">far more memory and lookup time than</text>
+  <text class="t bd" x="60" y="936">a flat array. At 512x512 that is 262k</text>
+  <text class="t bd" x="60" y="956">tiles. Index is y * size.x + x.</text>
+
+  <rect class="note" x="370" y="846" width="300" height="120" rx="7"/>
+  <text class="t lb" x="390" y="872">Use the _at() accessors</text>
+  <text class="t bd" x="390" y="896">Every getter has a raw-index form.</text>
+  <text class="t bd" x="390" y="916">Hot loops already hold the index, so</text>
+  <text class="t bd" x="390" y="936">they should never build a Vector2i</text>
+  <text class="t bd" x="390" y="956">just to read one tile.</text>
+
+  <rect class="note" x="700" y="846" width="300" height="120" rx="7"/>
+  <text class="t lb" x="720" y="872">Never write derived layers</text>
+  <text class="t bd" x="720" y="896">blocking and cost are outputs. Write</text>
+  <text class="t bd" x="720" y="916">ground or claim/release a tile, and</text>
+  <text class="t bd" x="720" y="936">they update. Setting them by hand</text>
+  <text class="t bd" x="720" y="956">desyncs them from the truth.</text>
+</svg>

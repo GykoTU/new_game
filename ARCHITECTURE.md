@@ -204,27 +204,93 @@ stored `NodePath` is never resolved and the property is silently null at runtime
 
 ## 6. Grid layers
 
-All grids are flat packed arrays indexed `y * map_size.x + x`. Never a
-`Dictionary` keyed by `Vector2i` — at 65k cells that costs roughly two orders of
-magnitude more memory and lookup time. (`LevelGenerator._occupied` is a
-Dictionary today and gets converted.)
+Implemented. `Level/world_grid.gd`, `buildings/building_store.gd`.
+**Diagram: [`docs/grid-layers.svg`](docs/grid-layers.svg)** — the layers, the id
+indirection, and the rules, drawn out. Keep it in step with this section.
 
-| Grid | Type | Meaning |
-|---|---|---|
-| `ground` | `PackedInt32Array` | terrain enum, exists today |
-| `occupancy` | `PackedInt32Array` | building index at this tile, `-1` = free |
-| `blocking` | `PackedByteArray` | bit flags: `BLOCKS_UNIT`, `BLOCKS_PROJECTILE`, `IS_ROAD` |
-| `cost` | `PackedByteArray` | movement cost for pathing; roads cheap, rough terrain dear |
-| `flow[slot]` | `PackedByteArray` | direction index 0-8 toward a cached target |
+`WorldGrid` owns every per-tile array. Systems that need to know what is where —
+pathing, projectile traversal, placement, unit steering — read it directly;
+`LevelGenerator` fills it and then steps back.
 
-Walls set both blocking bits. Water and void set `BLOCKS_UNIT` until bridged.
-Roads set `IS_ROAD` and lower `cost`.
+### The layers
 
-**Open:** whether enemies may use roads. Exposed as a flag, default off, because
-enemy-accessible roads turn a convenience into a liability and that needs play
-testing before it becomes a rule.
+All flat packed arrays, indexed `y * size.x + x`. **Never a `Dictionary` keyed
+by `Vector2i`** — at 512x512 that is 262k tiles, where a dictionary costs orders
+of magnitude more memory and lookup time than a flat array.
 
----
+| Layer | Type | Kind | Meaning |
+|---|---|---|---|
+| `ground` | `PackedByteArray` | source | terrain enum; a byte, since nine values fit in one |
+| `occupancy` | `PackedInt32Array` | source | building id, or `NO_OCCUPANT` (-1) |
+| `blocking` | `PackedByteArray` | derived | `BLOCKS_UNIT`, `BLOCKS_PROJECTILE`, `IS_ROAD` |
+| `cost` | `PackedByteArray` | derived | movement cost; `255` = impassable |
+
+Plus two internal byte arrays holding the occupant's own contribution. Storing
+it costs two bytes per tile and buys order-independence: changing terrain under
+a building and adding a building over terrain give the same answer either way.
+That matters once several systems write to the grid.
+
+**Derived layers are outputs, never inputs.** Write `ground`, or `claim`/
+`release` a tile, and `blocking` and `cost` follow. Setting them by hand
+desynchronises them from the truth, and every later bug from that is invisible.
+
+`255` in `cost` means impassable, not "very expensive". Pathing must treat it as
+a wall; a cost-weighted search that merely disprefers it will happily route
+units into water when the detour looks long enough.
+
+### Terrain rules
+
+Water, void and lava block movement. That is the expansion gate, not an obstacle
+to it: copper sits in water, quartz in void, gold in lava, so reaching them needs
+boats, bridges and eventually hauling water to cool lava. Ice and sand are
+passable but cost more than open ground.
+
+The table lives in `WorldGrid.GROUND_BLOCKING` and `GROUND_COST`, so changing
+which terrain blocks what is a one-line edit rather than a refactor.
+
+**Open:** whether enemies may use roads. Enemy-accessible roads turn a
+convenience into a liability, which is interesting but needs play testing.
+
+### Buildings
+
+`BuildingStore` holds buildings as parallel arrays addressed by a stable integer
+id, and `occupancy` stores that id. One indirection means a building's data
+lives in one place however many tiles it covers, and that buildings can carry
+state — health today; build progress, worker slots and cooldowns later — which a
+`Dictionary -> String` could not without becoming a dictionary of dictionaries.
+
+Ids come from a free list and are **reused after removal**, so an id is only
+meaningful while `is_alive(id)` holds. Nothing should cache an id across a
+removal without checking.
+
+Removal clears the rectangle named by the record's `cell` and `size`. The old
+`remove_building` scanned a dictionary and erased from it while iterating its own
+keys, which could skip tiles and leave phantom occupancy behind. There is now
+nothing to iterate, so the bug is gone structurally rather than patched.
+
+### Accessors
+
+Every getter has a `Vector2i` form for clarity and an `_at(index)` form for hot
+loops. Code that already holds an index must use `_at` — building a `Vector2i`
+per tile read is exactly the kind of cost that does not show up until there are
+hundreds of entities doing it every tick.
+
+### Measured
+
+Generation, on the development machine, via the headless benchmark:
+
+| Map | Tiles | Generate | Grid memory |
+|---|---|---|---|
+| 100x100 | 10,000 | ~130 ms | 88 KB |
+| 256x256 | 65,536 | ~320 ms | 576 KB |
+| 512x512 | 262,144 | ~860 ms | 2.3 MB |
+
+Generation is one-time, so these are comfortable. Memory is the number that
+matters for the flow fields landing on top of these grids in Stage 4.
+
+Note: `environment_count` is a flat count, not a density, so larger maps are
+currently emptier rather than bigger. It should scale with map area before map
+size is tuned for real.
 
 ## 7. Systems
 
@@ -379,23 +445,83 @@ cost; those stay as direct calls inside the owning system.
 
 ## 9. Save format
 
-Two files, deliberately separate.
+Implemented. `global/save_manager.gd`.
+**Diagram: [`docs/save-flow.svg`](docs/save-flow.svg)** — the write path, the
+crash windows and the load chain. Keep it in step with this section.
 
-**`user://run.save`** — the current run. Deleted on base death. Holds the map
-seed and ground array, buildings with health and state, units, resources,
-augments taken, XP, day number and clock state.
+### Who decides what is saved
 
-**`user://profile.save`** — permanent. Meta-currency, unlocks, statistics.
-Survives death. Never written by run logic.
+`SaveManager` does three things: file I/O, integrity, versioning. It does not
+know what a level or a worker is. `main.gd` assembles the run dictionary from
+the systems that own the data, and each system provides its own
+`get_save_data()` / `load_save_data()`. Adding a system to the save means adding
+one key in `main.gd.save_run()`, never touching the autoload.
 
-Both carry a `version: int` as the first key, and loading runs migrations
-forward from older versions. Saves store plain data only — ints, floats,
-strings, `Vector2i`, arrays, dictionaries — never objects, so `store_var` is
-called with object support off.
+    SaveManager.save_run(data) -> bool     load_run() -> Dictionary
+    SaveManager.has_run() -> bool          delete_run()
+    SaveManager.profile                    save_profile() -> bool
 
-The current `SaveManager` is debug scaffolding and is replaced by this.
+`settings.cfg` is not a save. It stays in `Settings` as a plain `ConfigFile`.
 
----
+### Two files, two policies
+
+**`user://run.save`** — one run. Deleted on death and on New Game. A version
+mismatch is **refused**: runs are ephemeral, and carrying migration code for
+every shape an in-development format passes through costs more than the
+occasional lost run.
+
+**`user://profile.save`** — permanent, never deleted by a run ending. A version
+mismatch is **migrated**, never discarded, because meta progression is the one
+thing a player would genuinely mourn. Keys added since a file was written take
+their default on load, so additive changes need no migration step; only a change
+in meaning needs one, and those go in `_migrate_profile` one version step at a time.
+
+Today the profile holds statistics. Meta-currency and unlocks join it in Stage 8.
+
+### Writing safely
+
+A plain `FileAccess.open(WRITE)` truncates the existing file before the new
+bytes exist, so a crash mid-write destroys the save outright. For a game aiming
+at long runs that is the worst failure mode available, so writes go:
+
+1. serialize, hash with SHA-256
+2. write header and payload to `run.save.tmp`
+3. **read it back and verify** — if that fails, stop; nothing has been rotated
+4. `run.save` -> `run.save.bak`
+5. `run.save.tmp` -> `run.save`
+
+Godot cannot rename over an existing file portably, so step 4 opens a brief
+window where `run.save` does not exist. That is survivable rather than ignored:
+`.tmp` at that moment is a *complete newer* save and `.bak` is the previous run,
+which is precisely why the load chain checks `.tmp` before `.bak`.
+
+### Reading safely
+
+The load chain is `run.save`, then `run.save.tmp`, then `run.save.bak`, taking
+the first whose magic, container version, schema version and digest all verify.
+Recovering from anything but the first logs a warning, so a degraded load is
+visible rather than silent.
+
+`has_run()` walks that same chain and verifies the payload rather than peeking
+at the header. A header can be intact while the payload behind it is corrupt,
+and a Continue button that silently drops the player into a brand new world is
+worse than the milliseconds a full check costs on a title screen.
+
+File layout, digest before payload so truncation is detected rather than
+deserialised into nonsense:
+
+    u32+bytes "NSPL" | u32 container ver | u32 schema ver
+    u32+bytes sha256 hex | u64 payload length | payload bytes
+
+Every length is bounded before it is trusted, so a corrupt length field cannot
+make the loader allocate wildly. Payloads are `var_to_bytes` without object
+support: saves carry plain data only, never objects.
+
+### Autosave
+
+Not implemented yet, deliberately. Saving mid-combat with hundreds of entities
+is a frame hitch, and the natural checkpoint is a day boundary, which needs
+`RunDirector` (Stage 3). `save_run()` is ready to be called from there.
 
 ## 10. Performance budget
 
@@ -418,9 +544,9 @@ Working targets, to be measured rather than assumed:
 
 ## 11. Known issues in existing code
 
-- `LevelGenerator.remove_building` erases from `_occupied` while iterating its
-  own keys, which can skip entries.
-- `_occupied` and `buildings` are `Dictionary` keyed by `Vector2i`; both become
-  flat arrays (section 5).
+- ~~`remove_building` erases from `_occupied` while iterating its own keys~~ —
+  fixed; removal now clears the record's rectangle.
+- ~~`_occupied` and `buildings` are `Dictionary` keyed by `Vector2i`~~ — done,
+  now `WorldGrid.occupancy` and `BuildingStore`.
 - ~~`main.gd` builds its tree procedurally~~ — done, now `main.tscn`.
 - ~~`project.godot` defines dead avatar input actions~~ — done, removed.

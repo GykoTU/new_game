@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 1140" width="1040" height="1140">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b675f"/>
+    </marker>
+    <style>
+      .t  { font-family: ui-sans-serif,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; fill:#2b2a27; }
+      .m  { font-family: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace; fill:#2b2a27; }
+      .mu { fill:#6b675f; }
+      .h1 { font-size:26px; font-weight:700; }
+      .h2 { font-size:17px; font-weight:700; }
+      .lb { font-size:14px; font-weight:600; }
+      .bd { font-size:13px; }
+      .sm { font-size:12px; }
+      .box  { fill:#ffffff; stroke:#ccc5b9; stroke-width:1.5; }
+      .step { fill:#fff8ef; stroke:#e09a4e; stroke-width:1.6; }
+      .good { fill:#f2f8f2; stroke:#7faa7f; stroke-width:1.6; }
+      .stop { fill:#fdf2f2; stroke:#d99a9a; stroke-width:1.5; }
+      .note { fill:#faf9f6; stroke:#ddd7cd; stroke-width:1.2; stroke-dasharray:4 3; }
+      .ar   { stroke:#6b675f; stroke-width:1.7; fill:none; marker-end:url(#a); }
+      .arr  { stroke:#c26a6a; stroke-width:1.5; fill:none; marker-end:url(#a); stroke-dasharray:5 4; }
+    </style>
+  </defs>
+  <rect width="1040" height="1140" fill="#fdfcfa"/>
+
+  <text class="t h1" x="40" y="46">Saving without losing the run</text>
+  <text class="t sm mu" x="40" y="70">Why a save is written three times and read from three places. See ARCHITECTURE.md, "Save format".</text>
+
+  <!-- ===== A: write ===== -->
+  <text class="t h2" x="40" y="112">A &#183; The write path</text>
+  <text class="t sm mu" x="40" y="134">A plain open-and-write truncates the old save first, so a crash mid-write destroys it. These five steps never leave zero good copies.</text>
+
+  <rect class="step" x="40" y="156" width="430" height="46" rx="6"/>
+  <text class="m bd" x="60" y="184">1.  serialize payload, hash it (SHA-256)</text>
+  <path class="ar" d="M255,202 L255,222"/>
+
+  <rect class="step" x="40" y="224" width="430" height="46" rx="6"/>
+  <text class="m bd" x="60" y="252">2.  write header + payload to run.save.tmp</text>
+  <path class="ar" d="M255,270 L255,290"/>
+
+  <rect class="step" x="40" y="292" width="430" height="46" rx="6"/>
+  <text class="m bd" x="60" y="320">3.  read run.save.tmp back and verify</text>
+  <path class="arr" d="M470,315 L560,315"/>
+  <path class="ar" d="M255,338 L255,358"/>
+
+  <rect class="step" x="40" y="360" width="430" height="46" rx="6"/>
+  <text class="m bd" x="60" y="388">4.  run.save  &#8594;  run.save.bak</text>
+  <path class="ar" d="M255,406 L255,426"/>
+
+  <rect class="good" x="40" y="428" width="430" height="46" rx="6"/>
+  <text class="m bd" x="60" y="456">5.  run.save.tmp  &#8594;  run.save</text>
+
+  <rect class="stop" x="560" y="292" width="440" height="46" rx="6"/>
+  <text class="t bd" x="580" y="320">verification fails &#8594; stop. Nothing was rotated.</text>
+
+  <rect class="note" x="560" y="156" width="440" height="120" rx="7"/>
+  <text class="t lb" x="580" y="182">If the power cuts during 1&#8211;3</text>
+  <text class="t bd" x="580" y="208">run.save has not been touched at all. The</text>
+  <text class="t bd" x="580" y="228">partial .tmp fails its checksum on the next</text>
+  <text class="t bd" x="580" y="248">load and is skipped. A bad write can never</text>
+  <text class="t bd" x="580" y="268">destroy a good save.</text>
+
+  <rect class="note" x="560" y="360" width="440" height="114" rx="7"/>
+  <text class="t lb" x="580" y="386">If the power cuts between 4 and 5</text>
+  <text class="t bd" x="580" y="412">run.save is momentarily gone. But .tmp is a</text>
+  <text class="t bd" x="580" y="432">COMPLETE newer save and .bak is the previous</text>
+  <text class="t bd" x="580" y="452">run. This is exactly why the loader checks</text>
+  <text class="t bd" x="580" y="472">.tmp before .bak &#8212; the newer one should win.</text>
+
+  <!-- ===== B: load ===== -->
+  <line x1="40" y1="512" x2="1000" y2="512" stroke="#e2ddd4" stroke-width="1.5"/>
+  <text class="t h2" x="40" y="552">B &#183; The load chain</text>
+  <text class="t sm mu" x="40" y="574">First candidate whose magic, container version, schema version and SHA-256 all check out. Order is not arbitrary.</text>
+
+  <rect class="box" x="40" y="598" width="200" height="56" rx="6"/>
+  <text class="m lb" x="60" y="622">run.save</text>
+  <text class="t sm mu" x="60" y="642">the normal case</text>
+  <path class="ar" d="M248,626 L292,626"/>
+  <text class="t sm mu" x="252" y="616">fails</text>
+
+  <rect class="box" x="300" y="598" width="200" height="56" rx="6"/>
+  <text class="m lb" x="320" y="622">run.save.tmp</text>
+  <text class="t sm mu" x="320" y="642">interrupted write</text>
+  <path class="ar" d="M508,626 L552,626"/>
+  <text class="t sm mu" x="512" y="616">fails</text>
+
+  <rect class="box" x="560" y="598" width="200" height="56" rx="6"/>
+  <text class="m lb" x="580" y="622">run.save.bak</text>
+  <text class="t sm mu" x="580" y="642">previous good save</text>
+  <path class="ar" d="M768,626 L812,626"/>
+  <text class="t sm mu" x="772" y="616">fails</text>
+
+  <rect class="stop" x="820" y="598" width="180" height="56" rx="6"/>
+  <text class="t lb" x="840" y="622">new level</text>
+  <text class="t sm mu" x="840" y="642">no usable save</text>
+
+  <rect class="note" x="40" y="676" width="960" height="76" rx="7"/>
+  <text class="t bd" x="62" y="702">has_run() walks this same chain and verifies the payload, rather than peeking at a header. A header can be intact while the</text>
+  <text class="t bd" x="62" y="722">payload behind it is corrupt, and a Continue button that silently starts a brand new world is worse than the milliseconds saved.</text>
+  <text class="t bd" x="62" y="742">Recovering from anything other than run.save logs a warning, so a degraded load is visible rather than silent.</text>
+
+  <!-- ===== C: files ===== -->
+  <line x1="40" y1="790" x2="1000" y2="790" stroke="#e2ddd4" stroke-width="1.5"/>
+  <text class="t h2" x="40" y="830">C &#183; Two files, two policies</text>
+
+  <rect class="box" x="40" y="852" width="465" height="150" rx="7"/>
+  <text class="m lb" x="62" y="878">user://run.save</text>
+  <text class="t bd" x="62" y="904">One run. Deleted on death and on New Game.</text>
+  <text class="t bd" x="62" y="930">A version mismatch is REFUSED, not migrated.</text>
+  <text class="t sm mu" x="62" y="954">Runs are ephemeral. Carrying migration code for every</text>
+  <text class="t sm mu" x="62" y="972">shape an in-development format passes through costs</text>
+  <text class="t sm mu" x="62" y="990">more than the occasional lost run.</text>
+
+  <rect class="good" x="535" y="852" width="465" height="150" rx="7"/>
+  <text class="m lb" x="557" y="878">user://profile.save</text>
+  <text class="t bd" x="557" y="904">Permanent. Never deleted by a run ending.</text>
+  <text class="t bd" x="557" y="930">A version mismatch is MIGRATED, never discarded.</text>
+  <text class="t sm mu" x="557" y="954">Meta progression is the one thing a player would truly</text>
+  <text class="t sm mu" x="557" y="972">mourn. Added keys take their default automatically, so</text>
+  <text class="t sm mu" x="557" y="990">additive changes need no migration step at all.</text>
+
+  <rect class="note" x="40" y="1024" width="960" height="92" rx="7"/>
+  <text class="t lb" x="62" y="1050">File layout</text>
+  <text class="m sm" x="62" y="1074">u32+bytes "NSPL"</text><text class="m sm" x="200" y="1074">u32 container ver</text><text class="m sm" x="338" y="1074">u32 schema ver</text><text class="m sm" x="455" y="1074">u32+bytes sha256</text><text class="m sm" x="586" y="1074">u64 length</text><text class="m sm" x="674" y="1074">bytes payload</text><text class="t sm mu" x="189" y="1074">&#183;</text><text class="t sm mu" x="327" y="1074">&#183;</text><text class="t sm mu" x="444" y="1074">&#183;</text><text class="t sm mu" x="575" y="1074">&#183;</text><text class="t sm mu" x="663" y="1074">&#183;</text>
+  <text class="t sm mu" x="62" y="1098">The digest is written before the payload so truncation is detected rather than deserialised. Every length is bounded before it is trusted.</text>
+</svg>

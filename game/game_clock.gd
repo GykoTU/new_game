@@ -135,6 +135,18 @@ func get_elapsed_seconds() -> float:
 	return tick_count * TICK_DELTA
 
 
+## Plain data for the run save. Speed is included so resuming feels the same
+## way the player left it; tick_count is the part that actually matters.
+func get_save_data() -> Dictionary:
+	return {"tick_count": tick_count, "speed": speed}
+
+
+func load_save_data(data: Dictionary) -> void:
+	tick_count = int(data.get("tick_count", 0))
+	speed = float(data.get("speed", 1.0))
+	_accumulator = 0.0
+
+
 func _notify_running(was_running: bool) -> void:
 	var now := is_running()
 	if now != was_running:

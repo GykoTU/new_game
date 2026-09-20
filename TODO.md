@@ -15,12 +15,13 @@ because of it.
 
 - [x] Move `main.gd`'s procedural tree into `main.tscn`
 - [x] `GameClock`: fixed-tick sub-stepping, pause reasons, ordered update loop
-- [ ] Convert `_occupied` / `buildings` from Dictionary to flat packed arrays
-- [ ] Add `blocking` and `cost` grids alongside `ground`
-- [ ] Fix `remove_building` iteration bug
+- [x] Convert `_occupied` / `buildings` to `WorldGrid` + `BuildingStore`
+- [x] Add `blocking` and `cost` grids alongside `ground`
+- [x] Fix `remove_building` iteration bug
 - [ ] Spatial hash for unit broadphase
 - [ ] Stat/modifier system (base, flat, increase, multiplier layers)
-- [ ] Rewrite `SaveManager`: run save + profile save, versioned, migrations
+- [x] Rewrite `SaveManager`: run + profile saves, atomic writes, checksums,
+      backup recovery, versioned with migrations
 - [~] Expand `EventBus` to the contract in ARCHITECTURE.md section 8
       (`game_speed_changed` added; the rest lands with its system)
 - [x] Remove the dead `jump` / `left` / `right` input actions
@@ -33,7 +34,8 @@ First loop the player can actually watch happen.
 - [ ] Resource counter UI (replaces the empty panel grids)
 - [ ] Mines produce at a rate into a local stockpile
 - [ ] Shop: buy workers, spend resources, real item data
-- [ ] Extend `BuildingData` with health, priority, cost, build work
+- [~] Extend `BuildingData`: health and grid flags done; threat_priority,
+      build_cost and build_work still to come
 
 ## Stage 2 — Workers and carriers
 
@@ -48,8 +50,10 @@ First loop the player can actually watch happen.
 ## Stage 3 — Day/night and the run
 
 - [ ] `RunDirector`: day counter, day/night phases, phase events
+- [ ] Autosave at day boundaries (calls `main.gd.save_run()`)
 - [ ] Day/night visual treatment
-- [ ] Run save/continue; run save destroyed on base death
+- [~] Run save/continue works; destroying it on base death waits for
+      `RunDirector` (`SaveManager.delete_run()` is ready)
 - [ ] Death, run summary, return to title
 
 ## Stage 4 — Enemies
@@ -97,11 +101,14 @@ First loop the player can actually watch happen.
 
 ## Continuous
 
-- [ ] Keep ARCHITECTURE.md and docs/frame-pipeline.svg current as systems land
+- [ ] Keep ARCHITECTURE.md and the docs/*.svg diagrams current as systems land
 - [ ] Headless parse check before handing over any change
 - [ ] Profile against the Stage-4/5 entity budget on the low-spec target
 
 ## Open questions
+
+- `environment_count` is a flat count, so bigger maps are emptier, not bigger.
+  Scale it with map area before tuning map size.
 
 - Worker house capacity
 - Day and night length
