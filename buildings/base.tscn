@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://bfr1aj28nc6d3"]
+
+[ext_resource type="Texture2D" uid="uid://hbyepkpaotj6" path="res://assets/buildings/base.png" id="1_uv5ks"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_g5ejs"]
+size = Vector2(99, 100)
+
+[node name="base" type="Node2D" unique_id=1085976882]
+
+[node name="Area2D" type="Area2D" parent="." unique_id=1817323215]
+position = Vector2(584, 316)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Area2D" unique_id=2092259424]
+position = Vector2(-0.5, 0)
+shape = SubResource("RectangleShape2D_g5ejs")
+
+[node name="Base" type="Sprite2D" parent="." unique_id=1166970629]
+position = Vector2(582, 315)
+scale = Vector2(3.2500005, 3.2500005)
+texture = ExtResource("1_uv5ks")

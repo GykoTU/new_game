@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://btlwwf6vbim4k"]
+
+[ext_resource type="Script" uid="uid://b1glk6lmckvfx" path="res://game/camera_2d.gd" id="1_u5kg4"]
+
+[node name="Camera" type="Node2D" unique_id=857470937]
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1127002331]
+position_smoothing_enabled = true
+position_smoothing_speed = 10.0
+script = ExtResource("1_u5kg4")
+zoom_speed = 0.2
+min_zoom = 0.1
+max_zoom = 4.0
+camera_speed = 1.0

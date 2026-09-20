@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://wut3wtlbem6t"]
+
+[ext_resource type="Script" uid="uid://d4e2x2i6jkn1f" path="res://UI/building_panels.gd" id="1_bn3j3"]
+[ext_resource type="Script" uid="uid://doqvwut60834q" path="res://UI/color_rect.gd" id="2_kd7ha"]
+
+[node name="BuildingsUI" type="CanvasLayer" unique_id=277327644]
+
+[node name="BuildingPanels" type="HBoxContainer" parent="." unique_id=1728296397]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -32.0
+offset_top = -64.0
+offset_right = 32.0
+grow_horizontal = 2
+grow_vertical = 0
+size_flags_vertical = 8
+script = ExtResource("1_bn3j3")
+num_panels = 5
+panel_size = 64
+
+[node name="ColorRect" type="ColorRect" parent="BuildingPanels" unique_id=1529685972]
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(0, 0, 0, 0.27450982)
+script = ExtResource("2_kd7ha")
+metadata/_edit_lock_ = true

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="BuildingData" format=3 uid="uid://dlgd1432du55j"]
+
+[ext_resource type="Script" uid="uid://cmw2phfafd342" path="res://buildings/building_data.gd" id="1_sxmdb"]
+[ext_resource type="Texture2D" uid="uid://hbyepkpaotj6" path="res://assets/buildings/base.png" id="2_opixg"]
+
+[resource]
+script = ExtResource("1_sxmdb")
+id = "base"
+texture = ExtResource("2_opixg")
+unique = true
+metadata/_custom_type_script = "uid://cmw2phfafd342"
