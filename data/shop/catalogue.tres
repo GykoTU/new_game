@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ShopCatalogue" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_fe8ij"]
+[ext_resource type="Resource" path="res://data/shop/miner.tres" id="2_k3djh"]
+[ext_resource type="Resource" path="res://data/shop/builder.tres" id="3_coi0a"]
+[ext_resource type="Resource" path="res://data/shop/boots.tres" id="4_1u4h4"]
+[ext_resource type="Resource" path="res://data/shop/pickaxe.tres" id="5_bexau"]
+[ext_resource type="Script" path="res://economy/shop_catalogue.gd" id="6_kpakn"]
+
+[resource]
+script = ExtResource("6_kpakn")
+items = Array[ExtResource("1_fe8ij")]([ExtResource("2_k3djh"), ExtResource("3_coi0a"), ExtResource("4_1u4h4"), ExtResource("5_bexau")])

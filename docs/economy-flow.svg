@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 1150" width="1040" height="1150">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b675f"/>
+    </marker>
+    <style>
+      .t  { font-family: ui-sans-serif,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; fill:#2b2a27; }
+      .m  { font-family: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace; fill:#2b2a27; }
+      .mu { fill:#6b675f; }
+      .no { fill:#a34a4a; }
+      .ok { fill:#3f7a3f; }
+      .h1 { font-size:26px; font-weight:700; }
+      .h2 { font-size:17px; font-weight:700; }
+      .lb { font-size:14px; font-weight:600; }
+      .bd { font-size:13px; }
+      .sm { font-size:12px; }
+      .box  { fill:#ffffff; stroke:#ccc5b9; stroke-width:1.5; }
+      .step { fill:#fff8ef; stroke:#e09a4e; stroke-width:1.6; }
+      .stat { fill:#f1f6fd; stroke:#7ba4d4; stroke-width:1.6; }
+      .good { fill:#f2f8f2; stroke:#7faa7f; stroke-width:1.6; }
+      .stop { fill:#fdf2f2; stroke:#d99a9a; stroke-width:1.5; }
+      .note { fill:#faf9f6; stroke:#ddd7cd; stroke-width:1.2; stroke-dasharray:4 3; }
+      .ar   { stroke:#6b675f; stroke-width:1.7; fill:none; marker-end:url(#a); }
+      .arr  { stroke:#c26a6a; stroke-width:1.5; fill:none; marker-end:url(#a); stroke-dasharray:5 4; }
+    </style>
+  </defs>
+  <rect width="1040" height="1150" fill="#fdfcfa"/>
+
+  <text class="t h1" x="40" y="46">What happens when you click Buy</text>
+  <text class="t sm mu" x="40" y="70">Shop.buy(item), from click to screen. See ARCHITECTURE.md, "Economy and shop".</text>
+
+  <!-- ===== A: the buy path ===== -->
+  <text class="t h2" x="40" y="112">A &#183; The buy path</text>
+
+  <rect class="box" x="40" y="130" width="440" height="44" rx="6"/>
+  <text class="m bd" x="60" y="157">shop slot pressed  &#8594;  Shop.buy(item)</text>
+  <path class="ar" d="M260,174 L260,192"/>
+
+  <rect class="step" x="40" y="194" width="440" height="44" rx="6"/>
+  <text class="m bd" x="60" y="221">1.  maxed?  (purchases &gt;= max_level)</text>
+  <path class="arr" d="M480,216 L560,216"/>
+  <path class="ar" d="M260,238 L260,256"/>
+
+  <rect class="stat" x="40" y="258" width="440" height="44" rx="6"/>
+  <text class="m bd" x="60" y="285">2.  price(item)  &#8212; see panel B</text>
+  <path class="ar" d="M260,302 L260,320"/>
+
+  <rect class="step" x="40" y="322" width="440" height="44" rx="6"/>
+  <text class="m bd" x="60" y="349">3.  Economy.spend(price)  all or nothing</text>
+  <path class="arr" d="M480,344 L560,344"/>
+  <path class="ar" d="M260,366 L260,384"/>
+
+  <rect class="step" x="40" y="386" width="440" height="44" rx="6"/>
+  <text class="m bd" x="60" y="413">4.  purchases[item.id] += 1</text>
+  <path class="ar" d="M260,430 L260,448"/>
+
+  <rect class="good" x="40" y="450" width="440" height="78" rx="6"/>
+  <text class="m bd" x="60" y="476">5.  apply by kind</text>
+  <text class="m sm" x="80" y="498">WORKER   roster.add(worker_kind)</text>
+  <text class="m sm" x="80" y="516">UPGRADE  modifiers.add_source("upg:id", modifiers_at(n))</text>
+  <path class="ar" d="M260,528 L260,546"/>
+
+  <rect class="box" x="40" y="548" width="440" height="44" rx="6"/>
+  <text class="m bd" x="60" y="575">6.  signals  &#8594;  resource bar, shop, worker bar</text>
+
+  <rect class="stop" x="560" y="194" width="440" height="44" rx="6"/>
+  <text class="t bd" x="580" y="221">maxed &#8594; return false. Nothing changes.</text>
+  <rect class="stop" x="560" y="322" width="440" height="44" rx="6"/>
+  <text class="t bd" x="580" y="349">any part unaffordable &#8594; false. Nothing is taken.</text>
+
+  <rect class="note" x="560" y="386" width="440" height="206" rx="7"/>
+  <text class="t lb" x="580" y="412">Why the order matters</text>
+  <text class="t bd" x="580" y="438">Spend happens BEFORE the purchase counts, so a</text>
+  <text class="t bd" x="580" y="458">failed spend can never leave a half-bought item.</text>
+  <text class="t bd" x="580" y="486">An upgrade re-adds its source rather than adding a</text>
+  <text class="t bd" x="580" y="506">new one: level 3 REPLACES level 2. The level lives</text>
+  <text class="t bd" x="580" y="526">in the purchase count, not in the source id, so there</text>
+  <text class="t bd" x="580" y="546">is exactly one place it is stored.</text>
+  <text class="t sm mu" x="580" y="576">Level N scales FLAT and INCREASE by N, MULTIPLIER to ^N.</text>
+
+  <!-- ===== B: price ===== -->
+  <line x1="40" y1="626" x2="1000" y2="626" stroke="#e2ddd4" stroke-width="1.5"/>
+  <text class="t h2" x="40" y="666">B &#183; How a price is calculated</text>
+  <text class="t sm mu" x="40" y="688">Worked example: Sturdy Boots, level 1 bought, during a 30% sale on upgrades.</text>
+
+  <rect class="box" x="40" y="708" width="150" height="76" rx="7"/>
+  <text class="t sm mu" x="58" y="732">base_cost</text>
+  <text class="m lb" x="58" y="762">30 gold</text>
+  <text class="m bd mu" x="200" y="752">&#215;</text>
+
+  <rect class="box" x="218" y="708" width="160" height="76" rx="7"/>
+  <text class="t sm mu" x="236" y="732">growth ^ purchases</text>
+  <text class="m lb" x="236" y="762">1.5 ^ 1 = 1.5</text>
+  <text class="m bd mu" x="388" y="752">&#215;</text>
+
+  <rect class="stat" x="406" y="708" width="190" height="76" rx="7"/>
+  <text class="t sm mu" x="424" y="732">SHOP_PRICE (a stat)</text>
+  <text class="m lb" x="424" y="762">0.7</text>
+  <text class="t sm mu" x="424" y="778">tags: shop, upgrade</text>
+  <path class="ar" d="M604,746 L636,746"/>
+
+  <rect class="box" x="644" y="708" width="196" height="76" rx="7"/>
+  <text class="t sm mu" x="662" y="732">snap, then round half up</text>
+  <text class="m bd" x="662" y="758">31.4999... &#8594; 31.5</text>
+  <text class="m bd" x="662" y="776">&#8594; 32, never below 1</text>
+  <path class="ar" d="M848,746 L880,746"/>
+
+  <rect class="good" x="888" y="708" width="112" height="76" rx="7"/>
+  <text class="t sm mu" x="906" y="732">price</text>
+  <text class="m lb" x="906" y="764">32 gold</text>
+
+  <rect class="note" x="40" y="804" width="960" height="72" rx="7"/>
+  <text class="t bd" x="62" y="828">Why snap: 45 &#215; 0.7 is 31.499999999999996 in binary floating point, which rounds to 31. The rendered shop showed exactly</text>
+  <text class="t bd" x="62" y="848">that bug. Snapping to 0.001 first removes the noise, so halves round up as intended. Rounded, not ceiled: ceiling would make</text>
+  <text class="t bd" x="62" y="868">30% off a 3-gold item cost 3 &#8212; no discount at all.</text>
+
+  <!-- ===== C: sales and saving ===== -->
+  <line x1="40" y1="908" x2="1000" y2="908" stroke="#e2ddd4" stroke-width="1.5"/>
+  <text class="t h2" x="40" y="948">C &#183; Sales and saving need no special code</text>
+
+  <rect class="stat" x="40" y="966" width="465" height="160" rx="7"/>
+  <text class="t lb" x="62" y="992">A sale is a modifier source</text>
+  <text class="m sm" x="62" y="1018">modifiers.add_source("sale:spring",</text>
+  <text class="m sm" x="62" y="1036">  [SHOP_PRICE x0.7 on "shop", "upgrade"])</text>
+  <text class="t bd" x="62" y="1064">Every item has a price StatBlock tagged with its</text>
+  <text class="t bd" x="62" y="1084">price_tags(), so tags pick what goes on sale. It saves,</text>
+  <text class="t bd" x="62" y="1104">expires and rebalances like any other modifier.</text>
+
+  <rect class="good" x="535" y="966" width="465" height="160" rx="7"/>
+  <text class="t lb" x="557" y="992">Loading rebuilds, it does not restore</text>
+  <text class="t bd" x="557" y="1018">The save holds purchase counts and source ids,</text>
+  <text class="t bd" x="557" y="1038">never resolved numbers. On load, purchases come</text>
+  <text class="t bd" x="557" y="1058">back first, then each "upg:" source is rebuilt from</text>
+  <text class="t bd" x="557" y="1078">today's item data at that level. So a rebalanced</text>
+  <text class="t bd" x="557" y="1098">upgrade reaches runs already in progress.</text>
+</svg>

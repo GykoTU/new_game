@@ -1,0 +1,16 @@
+These are mechanics I would like to support for 
+the future of the games development:
+
+weapons can:
+- hook enemies
+- slow enemies
+- shoot slinging projectiles
+- fling enemies
+- incinerate
+
+Shots can:
+- split into two
+- bounce off of walls
+- explode
+- explode enemies
+- whirl around

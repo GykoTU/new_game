@@ -33,6 +33,17 @@ profile keeps meta-currency for future runs. Runs are meant to get long.
 2. `assets/` is authored by hand and is never modified by tooling.
 3. Git is never touched by tooling; the author backs up manually.
 4. No addons or plugins without asking first. None are used today.
+5. **Art requests are a list of full paths**, e.g. `assets/npcs/builder.png`,
+   with size and — for animations — layout. The artist draws to that list;
+   code never invents a path the artist was not given.
+
+**Animation sheets:** one horizontal strip per animation, every frame 32x32,
+no trim, border, spacing or padding (Aseprite: Export Sprite Sheet, Layout
+"Horizontal strip"). Drawn facing right; left is mirrored in code. Frame time
+defaults to 100 ms (Aseprite's default) and is a per-animation setting. Units
+are drawn in one batch per kind with a shader picking each unit's frame, which
+is why the layout must be a fixed grid rather than Aseprite's packed layout.
+Current sheets: `assets/npcs/carrier_walk.png` (8 frames).
 
 ---
 
@@ -80,6 +91,31 @@ their own mechanism: an ordered set of effect hooks fired at points in a
 projectile's life. Keeping the two systems separate is what lets a numeric
 upgrade and a behavioural one compose without either knowing about the other.
 
+### D7 — StatBlocks are per type, never per instance
+One block for "goblin", one for "fire weapon", one for workers — never one per
+enemy. Hundreds of enemies share a block, and its resolved values are copied
+into each enemy's arrays at spawn. A block per instance would mean hundreds of
+caches re-resolving on every modifier change, which is exactly the per-entity
+overhead D2 exists to avoid. Short-lived per-instance effects (slowed, burning)
+are **status slots** on the entity, not modifiers.
+
+### D8 — Registries are append-only
+`Stats.Id`, `ResourceKind.Id` and `WorkerRoster.Kind` are enums whose integers
+are stored inside `.tres` files: a StatModifier stores `stat = 18`, a shop item
+stores its cost as `{0: 40, 2: 5}`. Inserting or reordering an entry silently
+retargets every saved reference — the pickaxe would quietly start modifying a
+different stat. New entries go at the end, before `COUNT`; nothing is removed,
+only retired. Save files are keyed by string ("gold", "miner") precisely so
+they survive a mistake here; authored data cannot be.
+
+### D9 — Prices resolve through the stat system
+A shop price is `base * growth^purchases * SHOP_PRICE`, where `SHOP_PRICE` is an
+ordinary stat resolved from a per-item StatBlock tagged with the item's
+`price_tags()`. So a sale, a merchant augment, or a "workers cost less" upgrade
+is a modifier source, not new code, and inherits tag targeting, saving and
+rebalancing for free. Reversing this would mean a second, parallel discount
+system for every future price effect.
+
 ---
 
 ## 4. Runtime structure
@@ -97,15 +133,20 @@ upgrade and a behavioural one compose without either knowing about the other.
       Projectiles          # SoA + MultiMeshInstance2D
       BuildPlacer
       Camera
-      UI (CanvasLayers)    # shop, buildings, workers, options, augment choice
+      UI (CanvasLayers)    # options, shop, building bar, worker bar,
+                           # resource bar, stat overlay; augment choice later
+
+Planned nodes above not yet built: RunDirector (Stage 3), Pathing, Units,
+Enemies, Projectiles (Stages 2, 4, 5). Grids exist as `Level.grid` (WorldGrid).
+
+`main.gd` also owns the run's plain-object systems, which have no node: the
+ModifierSet, Economy, WorkerRoster and Shop. It passes them to the UI through
+`bind()` calls in `_ready`, so the UI never reaches into `main.gd` on its own.
 
 Autoloads stay thin and global: `EventBus` (signals only), `SaveManager`
-(serialisation only), `Settings` (audio/video prefs only). Game state does not
-live in autoloads — it lives in the systems above so a run can be torn down and
-rebuilt cleanly.
-
-`main.gd` currently instantiates every child by hand in `_ready`. This moves into
-a `main.tscn` scene tree so the structure is visible and editable in the editor.
+(serialisation only), `Settings` (preferences: audio, video, key bindings).
+Game state does not live in autoloads — it lives in the systems above so a run
+can be torn down and rebuilt cleanly.
 
 ---
 
@@ -395,14 +436,200 @@ declare a max generation, and the projectile pool has a hard ceiling; when the
 pool is full, new spawns are dropped rather than growing the arrays. An augment
 combination must never be able to stall the game.
 
+**Behaviours read their parameters from stats.** Bounce reads `bounce_count`,
+explosions read `area_radius`, hook reads `pull_strength`. The behaviour decides
+*what happens*; the weapon's StatBlock decides *how much*. So "+1 bounce" is an
+ordinary modifier and needs no code, and the two systems meet at exactly one
+point: a behaviour calling `get_value()` on its weapon's block.
+
+**What the mechanics review added.** Checking the proposed mechanics
+(`docs/mechanics-coverage.md`) against this seam found that it was
+projectile-only, and three things are needed beyond it:
+
+- **Effects are first-class, not projectiles.** Explosions, burning ground and
+  chain triggers are entities in their own right. They share the projectiles'
+  generation counter, pool ceiling and `on_kill` hook — otherwise "enemies
+  explode on death" chains with nothing to stop it, because no projectile is
+  involved. *(Stage 5)*
+- **Enemies have movement events.** Hook and fling drive enemies with impulses;
+  an enemy slammed into a wall or another unit needs an event on the enemy side
+  (`on_wall_impact`, `on_unit_impact`) for impact damage to live in. *(Stage 4)*
+- **Impulse movement respects the blocking grid.** Otherwise hook and fling are
+  ways to teleport enemies through walls. *(Stage 4)*
+
+Slow and burn are status slots on the enemy (D7), strongest-wins with a
+refreshed duration, rather than additive stacks.
+
 ### Stats and modifiers
-Every tunable value resolves through a stat block with explicit layers:
 
-    final = (base + flat) * (1 + sum_of_increases) * product_of_multipliers
+Implemented. `stats/`.
+**Diagram: [`docs/stat-resolution.svg`](docs/stat-resolution.svg)** — a worked
+example through tags, the formula, and per-stat caching.
 
-Shop upgrades and augments are modifier sources, never direct writes. This is
-what makes synergies composable and debuggable instead of a pile of special
-cases, and it is worth having in place before the first upgrade ships.
+Four pieces:
+
+- **`Stats`** — the registry. Enum id, name, default and clamp range per stat.
+  Adding a stat is one enum entry and one table row, checked for order at load.
+- **`StatModifier`** — a `Resource`: stat, op, value, tags. Authorable in the
+  inspector. Deliberately has **no source field**: a `.tres` is shared by
+  everything referencing it, so two augments pointing at one modifier would
+  fight over a source written onto it.
+- **`ModifierSet`** — every active modifier in a run, grouped by **source**.
+  Sources are the unit of change: an augment, an upgrade level, a timed buff.
+  All of a source's modifiers arrive and leave together.
+- **`StatBlock`** — base values plus tags, resolving and caching. One per type
+  (D7).
+
+**The formula, in one place.** `Stats.combine()` is the only place the order of
+operations exists:
+
+    final = clamp( (base + flat) * (1 + sum of increases) * product of multipliers )
+
+Increases **add**; multipliers **multiply**. Two +50% increases give x2.00, two
+x1.5 multipliers give x2.25. That gap is what lets a rare augment be worth more
+than a common one — and it only means anything if the order never varies.
+
+**Clamps are deliberate.** Stacking multipliers will eventually push fire rate
+to zero or slow to 100%; the first symptom would be a division by zero or an
+enemy frozen forever, far from its cause. `fire_rate` floors at 0.05,
+`slow_strength` caps at 0.9, counts are capped. `FIRE_RATE` is shots per second
+rather than a cooldown so that "+20%" is always good news.
+
+**Tag targeting.** A modifier applies when the block carries **all** of its
+tags; no tags means everything. `["weapon", "fire"]` reaches fire weapons and
+nothing else. This is what makes synergies emerge instead of being hand-listed:
+a modifier on a tag reaches every present and future thing carrying that tag.
+
+**Caching is per stat.** `ModifierSet.stat_generation[stat]` moves only when a
+change touches that stat; blocks compare per stat and re-resolve only what
+moved. Measured: a cached read ~0.34 us; a change 0.25 ms across 50 blocks.
+The first version re-resolved every stat on every change and cost **2.7 ms** —
+enough that timed buffs expiring several times a second would show. Do not
+simplify back to one counter without re-running the benchmark.
+
+A replaced source must invalidate the stats it **used** to touch as well as the
+ones it touches now, or a source moving from damage to range leaves damage
+stale. There is a test for exactly this.
+
+**Saving stores sources, not results.** The run save lists active source ids;
+on load, `main.gd._resolve_modifier_source` rebuilds them from current data. A
+rebalanced augment therefore reaches runs already in progress. An unknown
+source refuses the load, for the same reason a missing building does. Runs saved
+before modifiers existed have no `modifiers` key and load as an empty set, so
+this was an additive change and `RUN_VERSION` did not move.
+
+### Economy and shop
+
+Implemented. `economy/`, `data/shop/`, `UI/shop_*.gd`, `UI/resource_bar.gd`.
+**Diagram: [`docs/economy-flow.svg`](docs/economy-flow.svg)** — the buy path,
+how a price is calculated, and why sales and saving need no special code.
+
+- **`ResourceKind`** — registry: gold, quartz, copper, diamond, fruit. Each has
+  a save key, a display name, an icon and the building that yields it. Append-
+  only (D8). A new resource appears in the resource bar with no UI change.
+- **`Economy`** — whole-number amounts. `spend(cost)` is **all or nothing**: a
+  cost of 20 gold and 5 copper takes both or neither, so a player can never have
+  paid half a price. New runs start with `starting_resources` (an export on the
+  Main node).
+- **`WorkerRoster`** — how many miners and builders the player owns. Separate
+  kinds by design. A count only until Stage 2 turns each into a unit.
+- **`ShopItemData`** / **`ShopCatalogue`** — one `.tres` per item in
+  `data/shop/`, listed in `catalogue.tres` in display order. Items are WORKER or
+  UPGRADE, carry a base cost per resource, a per-purchase growth factor, and an
+  optional max level. Icons are **paths**, not textures, so a missing sprite
+  shows the fallback instead of making the item fail to load.
+- **`Shop`** — prices, affordability, and what a purchase does.
+
+**Upgrades are levelled modifier sources.** Buying level N re-adds the source
+`"upg:<id>"` with the item's modifiers scaled to N — FLAT and INCREASE by N,
+MULTIPLIER to the power N — replacing level N-1. The level is stored once, as
+the purchase count, never in the source id.
+
+**Worker prices grow with purchases, not with workers alive**, so losing a
+worker does not make the next one cheaper. Revisit once workers can die.
+
+**Prices** follow D9: `round(base * growth^n * SHOP_PRICE)`, never below 1.
+Two rounding details, both caught by rendering the real shop:
+- Halves round **up**, after snapping to 0.001. `45 * 0.7` is
+  `31.499999999999996` in binary floating point and otherwise shows 31.
+- Stat storage is float64. Float32 turned 0.7 into 0.69999999, enough to flip a
+  price by one; blocks are per type, so the memory never mattered.
+
+Rounded, not ceiled: ceiling would make 30% off a 3-gold item still cost 3.
+
+**Sales** exist as a mechanism, not as content. A sale is a modifier source with
+`SHOP_PRICE` on tags such as `["shop", "upgrade"]`. When and how sales happen —
+schedules, events, random — is undesigned; the shop already shows a struck-
+through original price and the sale badge whenever one applies.
+
+The shop does not pause the game; the player has a pause key.
+
+### Key bindings
+
+Implemented. `global/keybinds.gd`, `UI/controls_list.gd`, and the Controls
+section of the options menu.
+
+Every shortcut is a named InputMap action — including the ones that used to be
+hard-coded (Ctrl+N, and the build placer's left/right click). `Keybinds.ACTIONS`
+lists each with a label, category, whether it is rebindable, and whether it is
+**dev-only**. Defaults live in `project.godot`; only bindings the player
+changed are written to `settings.cfg`, so a changed default in a later build
+still reaches everyone who never touched it.
+
+- **Conflicts:** binding an input another action holds takes it from that
+  action, which is left unbound and shown in red — never silently given a
+  different key.
+- **Escape is reserved.** The menu action cannot be rebound and its key cannot
+  be taken, or a player could lock themselves out of the menu that fixes it.
+- **Comparing inputs** uses `Keybinds.same_input`, not `InputEvent.is_match`.
+  Godot's built-in `ui_*` actions define keys by *keycode*, this project's by
+  *physical* keycode, and `is_match` treats those as different keys — which is
+  how the first version let Escape be taken.
+- **Capture** runs in `_input` and consumes every key and button while active,
+  so pressing Space to bind it does not also pause; the shop toggles in
+  `_unhandled_input` for the same reason.
+
+**Dev-only actions in release builds** are hidden from the list *and* erased
+from the InputMap at startup, before saved bindings are applied, so editing
+`settings.cfg` cannot resurrect them. Debug handlers check the build first,
+because asking about an erased action is an error, not a false. Exports made
+with Godot's *debug* template still count as debug builds. Tested by
+`Keybinds.simulate_release`, a test-only switch.
+
+Dev shortcuts today: **Ctrl+N** new run, **Ctrl+G** grant resources, **F3**
+stat overlay (every modifier source and every resolved stat, live).
+
+### UI and input: rules that are easy to break
+
+Three rules, each learned from a bug. None of them is visible on screen until
+it is broken.
+
+- **The world only reacts to input the UI did not use.** The camera starts pans
+  and zooms in `_unhandled_input`, never by polling `Input.is_action_*` —
+  polling sees every scroll, including one a menu already consumed, which made
+  the camera zoom while scrolling the controls list. As a second line of
+  defence it also ignores input whenever `gui_get_hovered_control()` is set.
+- **Containers let mouse events through by default.** In Godot 4 a
+  PanelContainer's `mouse_filter` defaults to PASS, so clicks in the gaps of a
+  panel fall through to the build placer and scrolls to the camera. Every HUD
+  panel sets STOP. Buttons *inside a ScrollContainer* are the exception: they
+  use PASS so the scroll wheel reaches the list instead of dying on the button.
+- **The options menu is modal, and must be the last child of `UI` in
+  `main.tscn`.** Unhandled input runs in reverse tree order, so the last child
+  sees it first; while open it consumes every key and mouse button, so nothing
+  underneath reacts. It always opens with every section collapsed.
+
+Verified by driving the real game with simulated input under a virtual display,
+including a control experiment: the same click that is blocked by the open shop
+places the base once the shop is closed.
+
+### Art references
+
+`Art.texture(path)` loads a sprite or returns a grey checker placeholder when
+the file is missing or not yet imported — a PNG only becomes loadable after
+the editor has imported it once. Debug builds print the list of missing
+sprites at startup. Nothing ever writes into `assets/`: the artist names the
+files, code references them by path.
 
 ### Progression
 Global XP from kills, exploration, and a slow survival drip that prevents
@@ -418,15 +645,19 @@ designed for yet.
 
 ## 8. EventBus contract
 
-Signals only; no state, no logic. Existing signals are kept; the set grows to:
+Signals only; no state, no logic. **Implemented** so far:
+
+    game_speed_changed(speed: float)
+    resource_changed(kind: int, amount: int)      # ResourceKind.Id
+    roster_changed(kind: int, count: int)         # WorkerRoster.Kind
+    shop_purchased(item_id: String, purchases: int)
+
+UI binds directly to the system objects main.gd hands it; these EventBus
+mirrors exist for systems that should not hold a reference. **Planned:**
 
     # run lifecycle
     run_started, run_ended(victory: bool), base_destroyed
     day_started(day: int), night_started(day: int)
-    game_speed_changed(speed: float)
-
-    # economy
-    resource_changed(id: String, amount: int)
 
     # progression
     xp_gained(amount: int), level_up(new_level: int)
@@ -462,6 +693,19 @@ one key in `main.gd.save_run()`, never touching the autoload.
     SaveManager.profile                    save_profile() -> bool
 
 `settings.cfg` is not a save. It stays in `Settings` as a plain `ConfigFile`.
+
+### What a run save holds, and load order
+
+    level, clock, economy, roster, shop, modifiers
+
+Load order is load-bearing: **shop purchases before modifiers**, because
+rebuilding an upgrade's modifiers reads its level from the purchase count; and
+**modifiers before the level**, because they are cheap to reject, so a run with
+a missing upgrade is refused before the map is built. On any failure `main.gd`
+starts a new run, which resets everything that may have partly loaded.
+
+Keys missing from older saves are additive (a run from before the economy gets
+the starting resources), so `RUN_VERSION` has not moved.
 
 ### Two files, two policies
 

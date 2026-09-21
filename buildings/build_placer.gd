@@ -1,8 +1,8 @@
 class_name BuildPlacer
 extends Node2D
 ## Placement mode: shows a see-through preview of a building under the mouse,
-## green where it can go and red where it can't. Left click places it,
-## right click cancels (unless cancelling is disabled, like for the first base).
+## green where it can go and red where it can't. "left_click" places it,
+## "cancel_placement" cancels (unless disabled, like for the first base).
 
 signal placement_finished(type: String, cell: Vector2i)
 signal placement_cancelled
@@ -56,15 +56,15 @@ func _process(_delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_active():
 		return
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			var type := _type
-			var cell := _cell
-			if level.place_building(type, cell):
-				stop()
-				placement_finished.emit(type, cell)
-			get_viewport().set_input_as_handled()
-		elif event.button_index == MOUSE_BUTTON_RIGHT and _cancellable:
+	# Actions rather than raw mouse buttons, so both can be rebound.
+	if event.is_action_pressed("left_click"):
+		var type := _type
+		var cell := _cell
+		if level.place_building(type, cell):
 			stop()
-			placement_cancelled.emit()
-			get_viewport().set_input_as_handled()
+			placement_finished.emit(type, cell)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("cancel_placement") and _cancellable:
+		stop()
+		placement_cancelled.emit()
+		get_viewport().set_input_as_handled()

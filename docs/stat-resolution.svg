@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 1090" width="1040" height="1090">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b675f"/>
+    </marker>
+    <style>
+      .t  { font-family: ui-sans-serif,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; fill:#2b2a27; }
+      .m  { font-family: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace; fill:#2b2a27; }
+      .mu { fill:#6b675f; }
+      .no { fill:#a34a4a; }
+      .ok { fill:#3f7a3f; }
+      .h1 { font-size:26px; font-weight:700; }
+      .h2 { font-size:17px; font-weight:700; }
+      .lb { font-size:14px; font-weight:600; }
+      .bd { font-size:13px; }
+      .sm { font-size:12px; }
+      .big { font-size:22px; font-weight:700; }
+      .box  { fill:#ffffff; stroke:#ccc5b9; stroke-width:1.5; }
+      .tgt  { fill:#fff8ef; stroke:#e09a4e; stroke-width:1.6; }
+      .res  { fill:#f2f8f2; stroke:#7faa7f; stroke-width:1.8; }
+      .note { fill:#faf9f6; stroke:#ddd7cd; stroke-width:1.2; stroke-dasharray:4 3; }
+      .row  { fill:#faf9f6; }
+      .dim  { fill:#f6f3ee; }
+      .ar   { stroke:#6b675f; stroke-width:1.7; fill:none; marker-end:url(#a); }
+    </style>
+  </defs>
+  <rect width="1040" height="1090" fill="#fdfcfa"/>
+
+  <text class="t h1" x="40" y="46">How one stat is resolved</text>
+  <text class="t sm mu" x="40" y="70">Worked example: the damage of a fire gun. See ARCHITECTURE.md, "Stats and modifiers".</text>
+
+  <!-- ===== A ===== -->
+  <text class="t h2" x="40" y="112">A &#183; Tags decide which modifiers apply</text>
+
+  <rect class="tgt" x="40" y="132" width="250" height="184" rx="7"/>
+  <text class="t lb" x="60" y="160">StatBlock: fire gun</text>
+  <text class="t sm mu" x="60" y="188">tags</text>
+  <text class="m bd" x="60" y="208">weapon, fire</text>
+  <text class="t sm mu" x="60" y="238">base damage</text>
+  <text class="m big" x="60" y="266">10</text>
+  <text class="t sm mu" x="60" y="290">A modifier applies only if</text><text class="t sm mu" x="60" y="306">the block has ALL its tags.</text>
+
+  <text class="t sm mu" x="320" y="150">source</text><text class="t sm mu" x="460" y="150">tags</text>
+  <text class="t sm mu" x="600" y="150">op</text><text class="t sm mu" x="740" y="150">value</text>
+  <text class="t sm mu" x="830" y="150">applies?</text>
+
+  <rect class="row" x="310" y="160" width="690" height="28" rx="3"/>
+  <text class="m bd" x="320" y="179">global</text><text class="m bd mu" x="460" y="179">(none)</text>
+  <text class="m bd" x="600" y="179">INCREASE</text><text class="m bd" x="740" y="179">+10%</text>
+  <text class="t bd ok" x="830" y="179">yes &#8212; no tags needed</text>
+
+  <rect class="row" x="310" y="192" width="690" height="28" rx="3"/>
+  <text class="m bd" x="320" y="211">all_weapons</text><text class="m bd" x="460" y="211">weapon</text>
+  <text class="m bd" x="600" y="211">INCREASE</text><text class="m bd" x="740" y="211">+50%</text>
+  <text class="t bd ok" x="830" y="211">yes</text>
+
+  <rect class="row" x="310" y="224" width="690" height="28" rx="3"/>
+  <text class="m bd" x="320" y="243">pyro</text><text class="m bd" x="460" y="243">weapon, fire</text>
+  <text class="m bd" x="600" y="243">MULTIPLIER</text><text class="m bd" x="740" y="243">&#215;2</text>
+  <text class="t bd ok" x="830" y="243">yes</text>
+
+  <rect class="dim" x="310" y="256" width="690" height="28" rx="3"/>
+  <text class="m bd mu" x="320" y="275">frost</text><text class="m bd mu" x="460" y="275">weapon, ice</text>
+  <text class="m bd mu" x="600" y="275">MULTIPLIER</text><text class="m bd mu" x="740" y="275">&#215;3</text>
+  <text class="t bd no" x="830" y="275">no &#8212; gun lacks "ice"</text>
+
+  <rect class="row" x="310" y="288" width="690" height="28" rx="3"/>
+  <text class="m bd" x="320" y="307">sharpened</text><text class="m bd" x="460" y="307">weapon</text>
+  <text class="m bd" x="600" y="307">FLAT</text><text class="m bd" x="740" y="307">+5</text>
+  <text class="t bd ok" x="830" y="307">yes</text>
+
+  <!-- ===== B ===== -->
+  <line x1="40" y1="346" x2="1000" y2="346" stroke="#e2ddd4" stroke-width="1.5"/>
+  <text class="t h2" x="40" y="386">B &#183; One fixed order of operations</text>
+  <text class="m sm mu" x="40" y="408">final = clamp( (base + flat) * (1 + sum of increases) * product of multipliers )</text>
+
+  <rect class="box" x="40" y="428" width="150" height="80" rx="7"/>
+  <text class="t sm mu" x="58" y="452">base + flat</text>
+  <text class="m big" x="58" y="484">10 + 5</text>
+  <text class="t sm mu" x="58" y="500">= 15</text>
+  <text class="m big mu" x="202" y="478">&#215;</text>
+
+  <rect class="box" x="226" y="428" width="190" height="80" rx="7"/>
+  <text class="t sm mu" x="244" y="452">1 + increases (ADD)</text>
+  <text class="m big" x="244" y="484">1 + .10 + .50</text>
+  <text class="t sm mu" x="244" y="500">= 1.6</text>
+  <text class="m big mu" x="428" y="478">&#215;</text>
+
+  <rect class="box" x="452" y="428" width="190" height="80" rx="7"/>
+  <text class="t sm mu" x="470" y="452">multipliers (MULTIPLY)</text>
+  <text class="m big" x="470" y="484">2</text>
+  <text class="t sm mu" x="470" y="500">frost excluded by tags</text>
+
+  <path class="ar" d="M650,468 L690,468"/>
+  <rect class="box" x="698" y="428" width="130" height="80" rx="7"/>
+  <text class="t sm mu" x="716" y="452">clamp</text>
+  <text class="m bd" x="716" y="480">[0, INF]</text>
+  <text class="t sm mu" x="716" y="500">per-stat range</text>
+
+  <path class="ar" d="M836,468 L870,468"/>
+  <rect class="res" x="878" y="428" width="122" height="80" rx="7"/>
+  <text class="t sm mu" x="896" y="452">damage</text>
+  <text class="m big" x="896" y="490">48</text>
+
+  <rect class="note" x="40" y="528" width="960" height="52" rx="7"/>
+  <text class="t bd" x="62" y="551">Flat applies before any percentage, so "+5 damage" is worth more on a gun that also has big increases. The order lives in one</text>
+  <text class="t bd" x="62" y="570">function, Stats.combine(), so it can never differ between two call sites. Clamps catch zero fire rates and 100% slows at the source.</text>
+
+  <!-- ===== C ===== -->
+  <line x1="40" y1="612" x2="1000" y2="612" stroke="#e2ddd4" stroke-width="1.5"/>
+  <text class="t h2" x="40" y="652">C &#183; Why increases and multipliers are different</text>
+  <text class="t sm mu" x="40" y="674">Same numbers, different operator. This gap is what lets a rare augment be worth more than a common one.</text>
+
+  <text class="t bd" x="40" y="712">two +50% increases</text>
+  <rect x="250" y="696" width="180" height="24" fill="#e6dccb"/>
+  <rect x="430" y="696" width="180" height="24" fill="#d8c9ad"/>
+  <text class="m bd" x="624" y="714">1 + 0.5 + 0.5 = &#215;2.00</text>
+
+  <text class="t bd" x="40" y="758">two &#215;1.5 multipliers</text>
+  <rect x="250" y="742" width="180" height="24" fill="#cfdfcf"/>
+  <rect x="430" y="742" width="225" height="24" fill="#a9c7a9"/>
+  <text class="m bd" x="669" y="760">1.5 &#215; 1.5 = &#215;2.25</text>
+
+  <!-- ===== D ===== -->
+  <line x1="40" y1="800" x2="1000" y2="800" stroke="#e2ddd4" stroke-width="1.5"/>
+  <text class="t h2" x="40" y="840">D &#183; Caching, per stat</text>
+  <text class="t sm mu" x="40" y="862">Each stat remembers the modifier-set generation it was resolved at. Only a mismatch re-resolves, and only that stat.</text>
+
+  <text class="t sm mu" x="250" y="892">damage</text><text class="t sm mu" x="400" y="892">fire_rate</text>
+  <text class="t sm mu" x="550" y="892">range</text><text class="t sm mu" x="700" y="892">move_speed</text>
+
+  <text class="m bd" x="40" y="922">set.stat_generation</text>
+  <rect class="box" x="240" y="904" width="120" height="28" rx="3"/><text class="m bd" x="290" y="923">7</text>
+  <rect class="box" x="390" y="904" width="120" height="28" rx="3"/><text class="m bd" x="440" y="923">12</text>
+  <rect class="box" x="540" y="904" width="120" height="28" rx="3"/><text class="m bd" x="590" y="923">3</text>
+  <rect class="box" x="690" y="904" width="120" height="28" rx="3"/><text class="m bd" x="740" y="923">0</text>
+
+  <text class="m bd" x="40" y="962">block._resolved_at</text>
+  <rect class="box" x="240" y="944" width="120" height="28" rx="3"/><text class="m bd" x="290" y="963">7</text>
+  <rect class="box" x="390" y="944" width="120" height="28" rx="3" style="stroke:#d99a9a"/><text class="m bd no" x="444" y="963">9</text>
+  <rect class="box" x="540" y="944" width="120" height="28" rx="3"/><text class="m bd" x="590" y="963">3</text>
+  <rect class="box" x="690" y="944" width="120" height="28" rx="3"/><text class="m bd" x="740" y="963">0</text>
+
+  <text class="t sm ok" x="264" y="994">cached</text>
+  <text class="t sm no" x="412" y="994">re-resolve</text>
+  <text class="t sm ok" x="564" y="994">cached</text>
+  <text class="t sm ok" x="714" y="994">cached</text>
+
+  <rect class="note" x="40" y="1014" width="960" height="52" rx="7"/>
+  <text class="t bd" x="62" y="1037">Measured: a cached read is ~0.34 us. A change re-resolves only the stats it touches: 0.25 ms across 50 blocks, down from</text>
+  <text class="t bd" x="62" y="1056">2.7 ms when every stat re-resolved on every change. Blocks are per TYPE, never per enemy, so the horde never re-resolves at all.</text>
+</svg>

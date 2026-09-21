@@ -104,6 +104,8 @@ func index(cell: Vector2i) -> int:
 
 
 func cell_at(i: int) -> Vector2i:
+	# Integer division is the point: the row is how many whole rows fit in i.
+	@warning_ignore("integer_division")
 	return Vector2i(i % size.x, i / size.x)
 
 

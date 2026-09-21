@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3 uid="uid://dgl3vibqwfxyy"]
+
+[ext_resource type="Script" uid="uid://d2j3ht3ek7i7u" path="res://stats/stat_modifier.gd" id="1_cubyk"]
+[ext_resource type="Script" uid="uid://bqxpvf2yq48p1" path="res://economy/shop_item_data.gd" id="2_optge"]
+
+[sub_resource type="Resource" id="Resource_fueuf"]
+script = ExtResource("1_cubyk")
+stat = 17
+value = 0.1
+tags = PackedStringArray("worker")
+
+[resource]
+script = ExtResource("2_optge")
+id = "boots"
+display_name = "Sturdy Boots"
+description = "+10% worker move speed per level."
+icon_path = "res://assets/ui/upgrade_boots.png"
+tags = PackedStringArray()
+base_cost = Dictionary[int, int]({
+0: 30
+})
+cost_growth = 1.5
+max_level = 5
+modifiers = Array[ExtResource("1_cubyk")]([SubResource("Resource_fueuf")])

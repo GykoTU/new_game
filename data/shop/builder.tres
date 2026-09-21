@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://stats/stat_modifier.gd" id="1_00pkr"]
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="2_krya5"]
+
+[resource]
+script = ExtResource("2_krya5")
+id = "builder"
+display_name = "Builder"
+description = "Idles at the base. Builds and repairs on its own."
+icon_path = "res://assets/ui/builder_icon.png"
+kind = 0
+tags = PackedStringArray("builder")
+base_cost = Dictionary[int, int]({
+0: 25
+})
+cost_growth = 1.25
+worker_kind = 1
