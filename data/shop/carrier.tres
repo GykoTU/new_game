@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://stats/stat_modifier.gd" id="1_2iai3"]
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="2_b23yx"]
+
+[resource]
+script = ExtResource("2_b23yx")
+id = "carrier"
+display_name = "Carrier"
+description = "Ferries goods from worker houses to the base. Needs a free bed in a carrier house."
+icon_path = "res://assets/ui/carrier_icon.png"
+kind = 0
+tags = PackedStringArray("carrier")
+base_cost = Dictionary[int, int]({
+0: 25
+})
+cost_growth = 1.25
+worker_kind = 2

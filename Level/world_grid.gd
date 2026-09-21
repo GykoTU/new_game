@@ -10,7 +10,15 @@ extends RefCounted
 ## index form for hot loops that already hold the index. Hot code should use the
 ## index form and never build a Vector2i just to read one tile.
 
+## APPEND-ONLY (D8): saves store one byte per tile, and BuildingData's
+## allowed_grounds is one bit per entry.
 enum Ground { GRASS_1, GRASS_2, GRASS_3, FLOWERS, ICE, LAVA, WATER, SAND, VOID }
+
+## Tiles whose ground or occupancy changed at runtime. Pathing, and later fog
+## of war and enemy flow fields, update only these instead of rescanning the
+## map. Silent while `notify` is false, i.e. during generation and loading,
+## after which listeners rebuild from scratch once.
+signal tiles_changed(indices: PackedInt32Array)
 
 ## Bit flags in `blocking`.
 const BLOCKS_UNIT := 1 << 0
@@ -75,6 +83,10 @@ var cost := PackedByteArray()
 var _occupant_blocking := PackedByteArray()
 var _occupant_cost := PackedByteArray()
 
+## Off during bulk generation and loading; LevelGenerator turns it on when the
+## map is complete. See tiles_changed.
+var notify := false
+
 
 func _init(map_size := Vector2i.ZERO) -> void:
 	if map_size != Vector2i.ZERO:
@@ -130,6 +142,7 @@ func set_ground(cell: Vector2i, g: int) -> void:
 func set_ground_at(i: int, g: int) -> void:
 	ground[i] = g
 	_derive(i)
+	_announce(i)
 
 
 func is_grass(g: int) -> bool:
@@ -157,6 +170,7 @@ func claim(i: int, building_id: int, block_flags: int, cost_value: int = 0) -> v
 	_occupant_blocking[i] = block_flags
 	_occupant_cost[i] = cost_value
 	_derive(i)
+	_announce(i)
 
 
 func release(i: int) -> void:
@@ -164,6 +178,7 @@ func release(i: int) -> void:
 	_occupant_blocking[i] = 0
 	_occupant_cost[i] = 0
 	_derive(i)
+	_announce(i)
 
 
 # --- Queries for gameplay systems ---------------------------------------------
@@ -210,6 +225,11 @@ func _derive(i: int) -> void:
 	# A tile nothing can walk onto is impassable regardless of its cost number.
 	if (blocking[i] & BLOCKS_UNIT) != 0:
 		cost[i] = COST_IMPASSABLE
+
+
+func _announce(i: int) -> void:
+	if notify:
+		tiles_changed.emit(PackedInt32Array([i]))
 
 
 ## Rebuilds every derived tile. Used after bulk-loading a ground array.

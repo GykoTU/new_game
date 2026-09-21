@@ -45,6 +45,7 @@ enum Id {
 	REPAIR_RATE,
 	# --- economy
 	SHOP_PRICE,
+	HOUSE_CAPACITY,
 	COUNT,
 }
 
@@ -86,6 +87,7 @@ const _TABLE := [
 	[Id.BUILD_SPEED,         "build_speed",           1.0,   0.0,   INF],
 	[Id.REPAIR_RATE,         "repair_rate",           1.0,   0.0,   INF],
 	[Id.SHOP_PRICE,          "shop_price",            1.0,   0.1,   INF],
+	[Id.HOUSE_CAPACITY,      "house_capacity",        3.0,   1.0,   64.0],
 ]
 
 static var _names := PackedStringArray()

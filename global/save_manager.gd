@@ -21,7 +21,9 @@ const MAGIC := "NSPL"
 ## Layout of the header itself. Changing this invalidates every existing file,
 ## so it should almost never change.
 const CONTAINER_VERSION := 1
-const RUN_VERSION := 1
+## 2: runs hold units, houses and construction sites (Stage 2a). A version-1
+## run is refused, per the run policy above, and the player starts fresh.
+const RUN_VERSION := 2
 const PROFILE_VERSION := 1
 
 ## Longest plausible header string. Bounds the read so a corrupt length field

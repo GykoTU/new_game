@@ -12,6 +12,14 @@ extends Node2D
 signal level_generated
 ## Emitted when the player places a building (not for generated mines/trees).
 signal building_placed(type: String, cell: Vector2i)
+## Emitted just before a building is removed, while its id is still valid.
+## Units whose home or target it was must let go of it.
+signal building_removed(id: int, type: String, cell: Vector2i)
+## A construction site reached full progress.
+signal construction_completed(id: int)
+
+## How faded a construction site's sprite is drawn, until construction.png exists.
+const CONSTRUCTION_ALPHA := 0.45
 
 ## Terrain lives on the grid now. Aliased so LevelGenerator.Ground keeps working.
 const Ground := WorldGrid.Ground
@@ -117,6 +125,7 @@ func generate() -> void:
 	_surround_water_with_sand()
 	_place_trees()
 	_draw_ground()
+	grid.notify = true
 	level_generated.emit()
 
 
@@ -157,9 +166,12 @@ func load_save_data(data: Dictionary) -> bool:
 	var xs: PackedInt32Array = saved["cells_x"]
 	var ys: PackedInt32Array = saved["cells_y"]
 	var hp: PackedFloat32Array = saved["health"]
+	# Saves from before construction sites existed have no progress: complete.
+	var progress: PackedFloat32Array = saved.get("progress", PackedFloat32Array())
 	var skipped := 0
 	for i in types.size():
-		var id := _add_building(Vector2i(xs[i], ys[i]), types[i])
+		var p := progress[i] if i < progress.size() else 1.0
+		var id := _add_building(Vector2i(xs[i], ys[i]), types[i], p)
 		if id == BuildingStore.NONE:
 			# The type no longer exists, or its BuildingData is missing from
 			# placeable_buildings. Loading the rest would hand the player a world
@@ -174,6 +186,7 @@ func load_save_data(data: Dictionary) -> bool:
 		return false
 
 	_draw_ground()
+	grid.notify = true
 	level_generated.emit()
 	return true
 
@@ -192,6 +205,7 @@ func remove_building(cell: Vector2i) -> void:
 	# which could skip tiles; there is nothing to iterate over now.
 	var origin := store.get_cell(id)
 	var size := store.get_size(id)
+	building_removed.emit(id, store.get_type(id), origin)
 	for y in size.y:
 		for x in size.x:
 			var c := origin + Vector2i(x, y)
@@ -239,6 +253,53 @@ func place_building(type: String, cell: Vector2i) -> bool:
 	_add_building(cell, type)
 	building_placed.emit(type, cell)
 	return true
+
+
+## Places a construction site: it claims its tiles now, and becomes the real
+## building when builders have put in its BuildingData.build_work. A type with
+## no build work is placed complete. Returns the id, or BuildingStore.NONE.
+func place_construction(type: String, cell: Vector2i) -> int:
+	if not can_place(type, cell):
+		return BuildingStore.NONE
+	var data := get_building_data(type)
+	var start := 0.0 if data != null and data.build_work > 0.0 else 1.0
+	var id := _add_building(cell, type, start)
+	if id != BuildingStore.NONE:
+		building_placed.emit(type, cell)
+	return id
+
+
+## Adds builder work to a construction site. Returns true on the call that
+## completes it. `work` is builder-seconds (build_speed * dt).
+func add_construction_work(id: int, work: float) -> bool:
+	if not store.is_alive(id) or store.is_complete(id):
+		return false
+	var data := get_building_data(store.get_type(id))
+	var total := data.build_work if data != null and data.build_work > 0.0 else 1.0
+	store.set_progress(id, store.get_progress(id) + work / total)
+	if not store.is_complete(id):
+		return false
+	_refresh_sprite(id)
+	construction_completed.emit(id)
+	return true
+
+
+## Cells where a building of `type` could go, touching the given building's
+## footprint (8-neighbourhood), nearest to `prefer` first. Placement rules
+## only; whether a unit can walk there is the pathing system's question.
+func free_cells_around(building_id: int, type: String, prefer: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if not store.is_alive(building_id):
+		return out
+	var origin := store.get_cell(building_id)
+	var size := store.get_size(building_id)
+	for y in range(origin.y - 1, origin.y + size.y + 1):
+		for x in range(origin.x - 1, origin.x + size.x + 1):
+			var c := Vector2i(x, y)
+			if grid.in_bounds(c) and can_place(type, c):
+				out.append(c)
+	out.sort_custom(func(a, b): return (a - prefer).length_squared() < (b - prefer).length_squared())
+	return out
 
 
 ## Pixel offset from a building's origin tile center to the center of its footprint.
@@ -290,6 +351,9 @@ func _clear() -> void:
 	buildings_root.y_sort_enabled = true
 	add_child(buildings_root)
 
+	# Silent while the map is rebuilt in bulk; listeners rebuild once on
+	# level_generated instead of hearing about every one of thousands of tiles.
+	grid.notify = false
 	grid.resize(map_size)
 	store.clear()
 	base_cell = INVALID_CELL
@@ -521,7 +585,7 @@ func _draw_ground() -> void:
 
 ## Registers a building, claims its tiles and creates its sprite.
 ## Returns the new building id, or BuildingStore.NONE if the type is unknown.
-func _add_building(cell: Vector2i, type: String) -> int:
+func _add_building(cell: Vector2i, type: String, progress: float = 1.0) -> int:
 	# Generated buildings (mines, trees) use BUILDING_FILES and are 1x1.
 	# Player buildings come from BuildingData and can be bigger.
 	var texture: Texture2D = _building_textures.get(type)
@@ -530,7 +594,7 @@ func _add_building(cell: Vector2i, type: String) -> int:
 	var max_health := BuildingStore.DEFAULT_MAX_HEALTH
 	var data := get_building_data(type)
 	if data != null:
-		texture = data.texture
+		texture = data.get_texture()
 		size = data.size
 		max_health = data.max_health
 		block_flags = 0
@@ -548,8 +612,9 @@ func _add_building(cell: Vector2i, type: String) -> int:
 	sprite.name = "%s_%d_%d" % [type, cell.x, cell.y]
 	buildings_root.add_child(sprite)
 
-	var id := store.add(type, cell, size, sprite, max_health)
+	var id := store.add(type, cell, size, sprite, max_health, progress)
 	sprite.set_meta("building_id", id)
+	_refresh_sprite(id)
 
 	for y in size.y:
 		for x in size.x:
@@ -560,6 +625,13 @@ func _add_building(cell: Vector2i, type: String) -> int:
 	if type == "base":
 		base_cell = cell # also runs when loading a save, so base_cell is restored
 	return id
+
+
+## Construction sites are drawn faded; complete buildings at full strength.
+func _refresh_sprite(id: int) -> void:
+	var sprite := store.get_sprite(id)
+	if sprite != null:
+		sprite.modulate.a = 1.0 if store.is_complete(id) else CONSTRUCTION_ALPHA
 
 
 # --- Small utilities ----------------------------------------------------------

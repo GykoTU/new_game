@@ -16,6 +16,9 @@ signal purchased(item: ShopItemData, purchases: int)
 const UPGRADE_PREFIX := "upg:"
 
 var catalogue: ShopCatalogue
+## Rules beyond price, such as "a builder needs a free bed". Called with the
+## item; returns "" if it may be bought, or the reason it may not.
+var purchase_check: Callable
 
 var _economy: Economy
 var _roster: WorkerRoster
@@ -71,14 +74,24 @@ func is_discounted(item: ShopItemData) -> bool:
 	return price(item) != base_price(item)
 
 
+## Why this item cannot be bought right now, apart from price; "" if it can.
+## Price is left out on purpose: the shop shows that as red numbers already.
+func block_reason(item: ShopItemData) -> String:
+	if is_maxed(item):
+		return "Max level"
+	if purchase_check.is_valid():
+		return purchase_check.call(item)
+	return ""
+
+
 func can_buy(item: ShopItemData) -> bool:
-	return not is_maxed(item) and _economy.can_afford(price(item))
+	return block_reason(item) == "" and _economy.can_afford(price(item))
 
 
 ## Spends the price and applies the item. Returns false and changes nothing if
 ## the item is maxed or unaffordable.
 func buy(item: ShopItemData) -> bool:
-	if is_maxed(item):
+	if block_reason(item) != "":
 		return false
 	if not _economy.spend(price(item)):
 		return false

@@ -18,7 +18,7 @@ because of it.
 - [x] Convert `_occupied` / `buildings` to `WorldGrid` + `BuildingStore`
 - [x] Add `blocking` and `cost` grids alongside `ground`
 - [x] Fix `remove_building` iteration bug
-- [ ] Spatial hash for unit broadphase *(moved: lands with its first user, Stage 2)*
+- [ ] Spatial hash for unit broadphase *(moved: lands with its first user, Stage 4)*
 - [x] Stat/modifier system: registry, tag targeting, per-stat caching,
       source-based saving
 - [x] Rewrite `SaveManager`: run + profile saves, atomic writes, checksums,
@@ -46,42 +46,98 @@ First loop the player can actually watch happen.
       build_cost and build_work still to come
 - [ ] When sales happen (schedule, events, random) — undesigned
 
-## Stage 2 — Workers and carriers
+## Stage 2a — Units, housing, mining
 
-- [ ] Mines produce at a rate into a local stockpile *(moved from Stage 1)*
-- [ ] Building purchases: shop buys into an owned-buildings inventory
-      *(moved from Stage 1)*
-- [ ] Building bar: shows a few owned buildings, in the order they were
-      bought (first bought = first slot); on hover it extends, partially
-      transparent, to show the rest. Click to place. Slot frame:
+- [x] Unit store: arrays, pooled, one batch per unit kind, animation shader
+      picking each unit's frame and mirroring left/right
+- [x] Pathfinding: `AStarGrid2D` weighted by the cost grid, kept in step
+      through `WorldGrid.tiles_changed`. One path per trip; route caching was
+      not needed (200 walking units: 0.75 ms per tick)
+- [x] Run start: a builder house, carrier house and miner home next to the
+      base, one worker in each
+- [x] Housing: builder and carrier houses hold 3 each (`HOUSE_CAPACITY` stat);
+      a builder or carrier can only be bought while a bed is free, and the
+      shop shows why not
+- [x] Builder job board: build > repair > cobble > chop, idle builders take
+      the highest-priority reachable job (cobble and chop have no providers
+      until 2b/2c)
+- [x] Construction sites: placed buildings are built by builders over time;
+      more builders build faster; sites drawn faded until `construction.png`
+- [x] Sending miners: select the miner slot, click a mine; one idle miner per
+      click, Shift to send several; refusals shown in a toast
+- [x] Worker house: one per mine, 3 miners, built by a builder on a free tile
+      next to the mine; miners wait until it stands, then move in
+- [x] Gathering while stationed; flee to the base if the house is destroyed
+- [x] Fixes after first play:
+  - [x] Units are drawn only while busy; idle ones wait inside their building
+  - [x] Clicking the miner slot with no miners says so at once
+  - [x] Mined resources bounce out of the mine as drops; carriers (only
+        they carry) fetch them to the base; a mine pauses at 20 drops
+  - [x] The starting miner commutes: mines outside for free, moves into a
+        mine's home when a bed is free, returns home if that home falls
+  - [x] A bought miner sent to a mine without a home pays for the home then
+        (placeholder: 5 diamonds, `BuildingData.cost`)
+- [ ] Player-set builder priorities (build / repair / cobble / chop / fetch)
+- [x] Reachable in 2a: diamond mines (ice). Gold arrives with cobble (2c).
+- [x] Run saves hold units; `RUN_VERSION` 2 (older run saves are refused)
+
+## Stage 2b — Wood, crafting, buildings
+
+- [ ] Plain trees (`tree`) generate on regular grass
+- [ ] Idle builders chop trees for wood (new resource, appended)
+- [ ] Chopped tree leaves a stump; the stump disappears after a while; a new
+      tree grows later on a random grass tile
+- [ ] Shop split into Buy (gold: NPCs, upgrades) and Craft (resources:
+      buildings, items); Better Pickaxes loses its copper cost
+- [ ] Blueprints: crafting needs one; the run starts knowing bucket, depot,
+      builder house and carrier house
+- [ ] Craftable houses: builder house, carrier house (3 each), paid in
+      resources; miner home cost moves to wood (it is paid on assignment,
+      never placed from the bar)
+- [ ] Owned-buildings inventory and the building bar: crafted buildings in
+      the order they were crafted; hover extends it, partially transparent,
+      to show the rest; click to place. Slot frame
       `assets/ui/building_slot.png` as a 9-slice.
-- [ ] Unit SoA store with pooling
-- [ ] Spatial hash for unit broadphase (moved from Stage 0; built with its
-      first real user so its bucket size is chosen from real data)
-- [ ] Click-a-worker-then-click-a-mine assignment
-- [ ] Worker house: built on arrival, houses N workers, has health
-- [ ] Gathering while stationed; flee home when the house dies
-- [ ] Carriers: stockpile to base, vulnerable in transit
-- [ ] Building workers: idle auto-build and auto-repair, with a build/repair
-      priority toggle in the worker UI
+- [ ] Depot: carriers deliver to the nearest depot instead of the base
+
+## Stage 2c — Cobble
+
+- [ ] Bucket: crafted from wood, one-off (`bucket_empty.png`)
+- [ ] A builder fills it once at water; it becomes the permanent water bucket
+      (`bucket_full.png`), usable by every builder
+- [ ] Builders turn marked lava tiles into cobble for builder time only
+      (new walkable ground type, appended to `Ground` per D8)
+- [ ] Gold mines become reachable
 
 ## Stage 3 — Day/night and the run
 
 - [ ] `RunDirector`: day counter, day/night phases, phase events
 - [ ] Autosave at day boundaries (calls `main.gd.save_run()`)
 - [ ] Day/night visual treatment
+- [ ] The commuting first miner walks home at night
 - [~] Run save/continue works; destroying it on base death waits for
       `RunDirector` (`SaveManager.delete_run()` is ready)
 - [ ] Death, run summary, return to title
 
+## Stage 3b — Exploration
+
+- [ ] Fog of war: the map is hidden until explored; explored tiles saved
+- [ ] Explorer NPC (bought with gold), sent out to reveal the map
+- [ ] Points of interest, hidden under fog, holding: blueprints, meta
+      currency, an interactable NPC living in a house, a tree with special
+      fruit
+
 ## Stage 4 — Enemies
 
 - [ ] Enemy SoA store + `MultiMeshInstance2D` rendering
+- [ ] Spatial hash for unit/enemy broadphase (moved from 2a: its first real
+      user is projectile and enemy hit tests)
 - [ ] Edge spawning, wave composition per day
 - [ ] Flow field cache and shared-target movement
 - [ ] Target scoring by `threat_priority` and distance
 - [ ] Enemies break walls when walls block their path
 - [ ] Building damage and destruction
+- [ ] Enemies drop blueprints
 - [ ] Impulse channel on enemy movement (knockback, pulls, hooks),
       respecting the blocking grid so nothing is pushed through a wall
 - [ ] Enemy movement events: `on_wall_impact`, `on_unit_impact`
@@ -126,6 +182,14 @@ First loop the player can actually watch happen.
 
 ---
 
+## Later — noted so they are not lost
+
+- [ ] Assignable builder tasks (idle builders choose on their own until then)
+- [ ] House occupancy upgrades: houses hold more units, and the building
+      visibly expands
+- [ ] Fruit: gatherable again, possibly as a special-fruit point of interest
+- [ ] Meta currencies found at points of interest feed Stage 8
+
 ## Continuous
 
 - [ ] Keep ARCHITECTURE.md and the docs/*.svg diagrams current as systems land
@@ -133,6 +197,28 @@ First loop the player can actually watch happen.
       changes or a stage lands
 - [ ] Headless parse check before handing over any change
 - [ ] Profile against the Stage-4/5 entity budget on the low-spec target
+
+## Art needed
+
+Full paths, 32x32 unless stated. Ticked = the file exists.
+
+**2a**
+- [x] `assets/ui/carrier_icon.png`
+- [x] `assets/buildings/builder_house.png`
+- Drops on the ground reuse the resource's UI icon (`assets/ui/…`). Separate
+  ground sprites are optional; say if you want them and I'll list the paths.
+- [x] `assets/buildings/carrier_house.png`
+- [ ] `assets/buildings/construction.png` — optional; without it the target
+      building is drawn faded
+
+**2b**
+- [x] `assets/ui/wood.png`
+- [x] `assets/buildings/plants/tree_stump.png`
+
+**2c**
+- [x] `assets/ground/ground_cobble.png`
+- [x] `assets/ui/bucket_empty.png` — before the one-time fill
+- [x] `assets/ui/bucket_full.png` — the permanent water bucket
 
 ## Open questions
 
@@ -143,7 +229,6 @@ First loop the player can actually watch happen.
 - `environment_count` is a flat count, so bigger maps are emptier, not bigger.
   Scale it with map area before tuning map size.
 
-- Worker house capacity
 - Day and night length
 - Whether enemies may use roads (flag exists, default off)
 - Per-building and per-worker XP — deferred, noted as a future direction

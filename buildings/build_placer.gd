@@ -31,7 +31,7 @@ func start(type: String, cancellable := true) -> void:
 		return
 	_type = type
 	_cancellable = cancellable
-	_ghost.texture = data.texture
+	_ghost.texture = data.get_texture()
 	_ghost.show()
 	set_process(true)
 

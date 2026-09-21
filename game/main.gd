@@ -10,17 +10,24 @@ extends Node2D
 ## Pause reason pushed while the options menu is open.
 const PAUSE_OPTIONS := "options_menu"
 
-## Stat blocks for unit types, one per TYPE (D7). Stage 2 moves these into the
-## unit system; they exist now so upgrades have something to modify and the
-## stat overlay can show it. "stats" is what the overlay lists.
+## Stat blocks for unit types, one per TYPE (D7). Keys match WorkerRoster's
+## save keys. "base" overrides registry defaults; "stats" is what the F3
+## overlay lists. All numbers are placeholders for balancing.
 const UNIT_TYPES := {
 	"miner": {
 		"tags": ["unit", "worker", "miner"],
-		"stats": [Stats.Id.MOVE_SPEED, Stats.Id.GATHER_RATE, Stats.Id.CARRY_CAPACITY],
+		"base": {Stats.Id.MOVE_SPEED: 48.0, Stats.Id.GATHER_RATE: 0.25},
+		"stats": [Stats.Id.MOVE_SPEED, Stats.Id.GATHER_RATE],
 	},
 	"builder": {
 		"tags": ["unit", "worker", "builder"],
+		"base": {Stats.Id.MOVE_SPEED: 56.0},
 		"stats": [Stats.Id.MOVE_SPEED, Stats.Id.BUILD_SPEED, Stats.Id.REPAIR_RATE],
+	},
+	"carrier": {
+		"tags": ["unit", "worker", "carrier"],
+		"base": {Stats.Id.MOVE_SPEED: 64.0, Stats.Id.CARRY_CAPACITY: 10.0},
+		"stats": [Stats.Id.MOVE_SPEED, Stats.Id.CARRY_CAPACITY],
 	},
 }
 
@@ -38,20 +45,31 @@ const UNIT_TYPES := {
 @onready var shop_ui: CanvasLayer = $UI/ShopUI
 @onready var worker_ui = $UI/WorkerUI/WorkerUI
 @onready var stat_overlay: CanvasLayer = $UI/StatOverlay
+@onready var toast: CanvasLayer = $UI/Toast
+@onready var unit_renderer: UnitRenderer = $UnitRenderer
 
 ## Every active stat modifier in this run: augments, upgrades, buffs, sales.
 var modifiers := ModifierSet.new()
 var economy := Economy.new()
 var roster := WorkerRoster.new()
 var shop: Shop
+var units := UnitSystem.new()
 ## UNIT_TYPES name -> StatBlock
 var type_blocks := {}
+## True while the player is choosing a mine to send a miner to.
+var _dispatching := false
 
 
 func _ready() -> void:
 	shop = Shop.new(shop_catalogue, economy, roster, modifiers)
 	for type in UNIT_TYPES:
-		type_blocks[type] = StatBlock.new(modifiers, PackedStringArray(UNIT_TYPES[type]["tags"]))
+		type_blocks[type] = StatBlock.new(modifiers, PackedStringArray(UNIT_TYPES[type]["tags"]),
+			UNIT_TYPES[type].get("base", {}))
+	# Before any level exists: the unit system listens for level_generated to
+	# build its pathing grid.
+	units.setup(level, economy, modifiers, type_blocks)
+	roster.attach(units)
+	shop.purchase_check = _purchase_check
 
 	EventBus.on_quit_button_pressed.connect(save_run)
 	economy.changed.connect(func(kind, amount): EventBus.resource_changed.emit(kind, amount))
@@ -63,7 +81,8 @@ func _ready() -> void:
 
 	resource_bar.bind(economy)
 	shop_ui.bind(shop, economy, modifiers)
-	worker_ui.bind(roster)
+	worker_ui.bind(units)
+	worker_ui.slot_pressed.connect(_on_worker_slot_pressed)
 	stat_overlay.bind(self)
 
 	# The level does not generate itself on _ready: children are readied before
@@ -82,18 +101,25 @@ func _process(delta: float) -> void:
 	var ticks := clock.advance(delta)
 	for i in ticks:
 		_simulate(GameClock.TICK_DELTA)
+	# Drawn once per frame, after the simulation, never from inside it.
+	unit_renderer.draw_units(units.store, clock.tick_count)
+	unit_renderer.draw_drops(units.drops, clock.tick_count)
 
 
 ## The single place simulation order is decided. Every system that advances the
 ## world is stepped from here, in this order, with a fixed dt.
-## Systems land here as they are built (Stage 2 onward in TODO.md).
-func _simulate(_dt: float) -> void:
-	pass
+##   1. units -- move, decide, build, gather, haul (UnitSystem.step)
+## Systems land here as they are built, in the order they must run.
+func _simulate(dt: float) -> void:
+	units.tick = clock.tick_count
+	units.step(dt)
 
 
 # --- Run lifecycle ------------------------------------------------------------
 
 func _start_new_run() -> void:
+	_end_dispatch()
+	units.clear()
 	modifiers.clear()
 	shop.reset()
 	roster.clear()
@@ -126,6 +152,9 @@ func _load_run(save: Dictionary) -> bool:
 		return false
 	if not level.load_save_data(save["level"]):
 		return false
+	# After the level: units refer to buildings by cell.
+	if not units.load_save_data(save.get("units", {})):
+		return false
 	if save.has("clock"):
 		clock.load_save_data(save["clock"])
 	return true
@@ -141,6 +170,7 @@ func save_run() -> void:
 		"roster": roster.get_save_data(),
 		"shop": shop.get_save_data(),
 		"modifiers": modifiers.get_save_data(),
+		"units": units.get_save_data(),
 		# progression and the day/night director join this as they are built.
 		# SaveManager neither knows nor cares what these keys mean.
 	})
@@ -172,7 +202,65 @@ func _referenced_art() -> Array:
 		if item != null:
 			paths.append(item.icon_path)
 	paths.append("res://assets/ui/sale_tag.png")
+	for data in level.placeable_buildings:
+		if data != null and data.texture == null:
+			paths.append(data.texture_path)
+	for kind in UnitRenderer.LOOKS:
+		for anim in UnitRenderer.LOOKS[kind]:
+			paths.append(UnitRenderer.LOOKS[kind][anim])
 	return paths
+
+
+## Rules the shop checks beyond price. Workers need a base to arrive at, and
+## builders and carriers need a free bed.
+func _purchase_check(item: ShopItemData) -> String:
+	if item.kind != ShopItemData.Kind.WORKER:
+		return ""
+	if level.base_cell == LevelGenerator.INVALID_CELL:
+		return "Place your base first."
+	if item.worker_kind != WorkerRoster.Kind.MINER and units.free_beds(item.worker_kind) <= 0:
+		return "Needs a free bed: craft another %s house." % WorkerRoster.display_of(item.worker_kind).to_lower()
+	return ""
+
+
+# --- Sending miners -----------------------------------------------------------
+
+func _on_worker_slot_pressed(kind: int) -> void:
+	if kind != WorkerRoster.Kind.MINER:
+		return   # builders and carriers work on their own (assignable tasks: later)
+	if _dispatching:
+		_end_dispatch()
+		return
+	if level.base_cell == LevelGenerator.INVALID_CELL:
+		toast.show_message("Place your base first.")
+		return
+	if units.count(kind) == 0:
+		toast.show_message("You have no miners. Buy one in the shop.")
+		return
+	_dispatching = true
+	worker_ui.set_active(kind)
+	toast.show_message("Click a mine to send a miner.  Shift: send more.  %s: stop." \
+		% Keybinds.describe_action("cancel_placement"), 4.0)
+
+
+func _end_dispatch() -> void:
+	_dispatching = false
+	if worker_ui != null:
+		worker_ui.set_active(-1)
+
+
+## Left click while dispatching. Shift keeps the mode open to send more; any
+## refusal closes it and says why.
+func _dispatch_click(shift: bool) -> void:
+	var cell := level.world_to_cell(get_global_mouse_position())
+	var mine := level.grid.get_occupant(cell) if level.grid.in_bounds(cell) else WorldGrid.NO_OCCUPANT
+	var result := "Click a mine." if mine == WorldGrid.NO_OCCUPANT else units.send_miner(mine)
+	if result != "":
+		toast.show_message(result)
+		_end_dispatch()
+	elif not shift:
+		toast.hide_message()
+		_end_dispatch()
 
 
 # --- Callbacks ----------------------------------------------------------------
@@ -182,9 +270,9 @@ func _on_level_generated() -> void:
 	pass
 
 
-func _on_placement_finished(type: String, cell: Vector2i) -> void:
+func _on_placement_finished(type: String, _cell: Vector2i) -> void:
 	if type == "base":
-		print("Base placed at ", cell)
+		units.start_run_kit()
 
 
 ## The options menu freezes the world through the clock rather than through
@@ -201,6 +289,17 @@ func _on_options_visibility_changed() -> void:
 # --- Input --------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _dispatching:
+		if event.is_action_pressed("left_click"):
+			_dispatch_click(event is InputEventWithModifiers and event.shift_pressed)
+			get_viewport().set_input_as_handled()
+			return
+		if event.is_action_pressed("cancel_placement"):
+			_end_dispatch()
+			toast.hide_message()
+			get_viewport().set_input_as_handled()
+			return
+
 	if event.is_action_pressed("game_pause"):
 		clock.toggle_player_pause()
 		get_viewport().set_input_as_handled()

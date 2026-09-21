@@ -77,6 +77,12 @@ func _build() -> void:
 		price.add_theme_font_size_override("normal_font_size", 12)
 		box.add_child(price)
 
+		var reason := _label("", 10)
+		reason.add_theme_color_override("font_color", SHORT_COLOR)
+		reason.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		reason.custom_minimum_size.x = slot_size.x - 12
+		box.add_child(reason)
+
 		var badge := TextureRect.new()
 		badge.texture = Art.texture(SALE_BADGE)
 		badge.custom_minimum_size = Vector2(24, 24)
@@ -92,7 +98,7 @@ func _build() -> void:
 
 		add_child(button)
 		_slots.append({"item": item, "button": button, "level": level,
-			"price": price, "badge": badge})
+			"price": price, "badge": badge, "reason": reason})
 
 
 func refresh() -> void:
@@ -111,6 +117,10 @@ func refresh() -> void:
 		_fill_price(slot["price"], item)
 		slot["badge"].visible = _shop.is_discounted(item) and not _shop.is_maxed(item)
 		slot["button"].disabled = not _shop.can_buy(item)
+		var why := _shop.block_reason(item) if not _shop.is_maxed(item) else ""
+		slot["reason"].text = why
+		slot["reason"].visible = why != ""
+		slot["button"].tooltip_text = item.description + ("\n" + why if why != "" else "")
 
 
 func _fill_price(rich: RichTextLabel, item: ShopItemData) -> void:

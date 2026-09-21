@@ -1,7 +1,13 @@
 extends HBoxContainer
-## The worker bar along the bottom. The first slots show how many of each
-## worker kind the player owns. In Stage 2 these become the place workers are
-## selected from before sending them to a mine.
+## The worker bar along the bottom: one slot per worker kind.
+##
+## Miners show idle/total: click the slot, then click a mine to send one.
+## Builders and carriers show count/beds, since beds are what limit buying more.
+
+signal slot_pressed(kind: int)
+
+const ACTIVE_COLOR := Color(0.22, 0.34, 0.52, 0.95)
+const IDLE_COLOR := Color(0, 0, 0, 0.9)
 
 @onready var template = $Panel
 @export var panel_amount: int = 5
@@ -9,28 +15,33 @@ extends HBoxContainer
 ## Keep this a whole multiple of the art's 32 px (here 2x). A fractional scale
 ## such as the old 48 px (1.5x) gives uneven pixel widths and looks smudged.
 @export var icon_size: int = 64
-@export var count_font_size: int = 22
+@export var count_font_size: int = 20
 
+var _units = null
+var _panels := {}   # WorkerRoster.Kind -> Panel
 var _counts := {}   # WorkerRoster.Kind -> Label
 
 
 func _ready():
 	# Set up the template slot
 	template.custom_minimum_size = Vector2(panel_size, panel_size)
-	template.self_modulate = Color(0, 0, 0, 0.9)
+	template.self_modulate = IDLE_COLOR
 
 	# Add panels to hbox
 	for panel in panel_amount - 1:
 		add_child(template.duplicate())
 
 
-func bind(roster: WorkerRoster) -> void:
+func bind(units) -> void:
+	_units = units
 	var panels := get_children()
 	for kind in WorkerRoster.Kind.COUNT:
 		if kind >= panels.size():
 			break
 		var panel: Control = panels[kind]
-		panel.tooltip_text = WorkerRoster.display_of(kind)
+		panel.mouse_filter = Control.MOUSE_FILTER_STOP
+		panel.gui_input.connect(_on_panel_input.bind(kind))
+		_panels[kind] = panel
 
 		var icon := TextureRect.new()
 		icon.texture = Art.texture(WorkerRoster.icon_path_of(kind))
@@ -59,11 +70,35 @@ func bind(roster: WorkerRoster) -> void:
 		panel.add_child(count)
 		_counts[kind] = count
 
-	roster.changed.connect(_on_changed)
-	for kind in WorkerRoster.Kind.COUNT:
-		_on_changed(kind, roster.count(kind))
+	units.changed.connect(func(_kind): refresh())
+	refresh()
 
 
-func _on_changed(kind: int, count: int) -> void:
-	if _counts.has(kind):
-		_counts[kind].text = str(count)
+func refresh() -> void:
+	if _units == null:
+		return
+	for kind in _counts:
+		var label: Label = _counts[kind]
+		var panel: Control = _panels[kind]
+		var total: int = _units.count(kind)
+		var kind_name := WorkerRoster.display_of(kind)
+		if kind == WorkerRoster.Kind.MINER:
+			var idle: int = _units.idle_count(kind)
+			label.text = "%d/%d" % [idle, total]
+			panel.tooltip_text = "%ss: %d idle of %d.\nClick, then click a mine to send one." % [kind_name, idle, total]
+		else:
+			var beds: int = _units.beds(kind)
+			label.text = "%d/%d" % [total, beds]
+			panel.tooltip_text = "%ss: %d, beds for %d." % [kind_name, total, beds]
+
+
+## Highlights the slot of the kind being commanded; -1 clears it.
+func set_active(kind: int) -> void:
+	for k in _panels:
+		_panels[k].self_modulate = ACTIVE_COLOR if k == kind else IDLE_COLOR
+
+
+func _on_panel_input(event: InputEvent, kind: int) -> void:
+	if event.is_action_pressed("left_click"):
+		slot_pressed.emit(kind)
+		accept_event()

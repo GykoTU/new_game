@@ -77,3 +77,9 @@ static func source_of(id: int) -> String:
 ## -1 if unknown.
 static func id_from_key(key: String) -> int:
 	return _ids_by_key.get(key, -1)
+
+
+## The resource a building type yields ("mine_gold" -> GOLD), or -1.
+static func id_from_source(building_type: String) -> int:
+	var i := _sources.find(building_type)
+	return i

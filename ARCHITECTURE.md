@@ -100,8 +100,10 @@ overhead D2 exists to avoid. Short-lived per-instance effects (slowed, burning)
 are **status slots** on the entity, not modifiers.
 
 ### D8 — Registries are append-only
-`Stats.Id`, `ResourceKind.Id` and `WorkerRoster.Kind` are enums whose integers
-are stored inside `.tres` files: a StatModifier stores `stat = 18`, a shop item
+`Stats.Id`, `ResourceKind.Id`, `WorkerRoster.Kind` and `WorldGrid.Ground` are
+enums whose integers are stored inside `.tres` files or saves — the level save
+stores ground as one byte per tile, and `BuildingData.allowed_grounds` is a bit
+per ground type: a StatModifier stores `stat = 18`, a shop item
 stores its cost as `{0: 40, 2: 5}`. Inserting or reordering an entry silently
 retargets every saved reference — the pickaxe would quietly start modifying a
 different stat. New entries go at the end, before `COUNT`; nothing is removed,
@@ -136,11 +138,13 @@ system for every future price effect.
       UI (CanvasLayers)    # options, shop, building bar, worker bar,
                            # resource bar, stat overlay; augment choice later
 
-Planned nodes above not yet built: RunDirector (Stage 3), Pathing, Units,
-Enemies, Projectiles (Stages 2, 4, 5). Grids exist as `Level.grid` (WorldGrid).
+Planned nodes above not yet built: RunDirector (Stage 3), Enemies,
+Projectiles (Stages 4, 5). Grids exist as `Level.grid` (WorldGrid). Units are
+a `UnitSystem` object (below) plus one `UnitRenderer` node; unit pathing lives
+inside the UnitSystem.
 
 `main.gd` also owns the run's plain-object systems, which have no node: the
-ModifierSet, Economy, WorkerRoster and Shop. It passes them to the UI through
+ModifierSet, Economy, WorkerRoster, Shop and UnitSystem. It passes them to the UI through
 `bind()` calls in `_ready`, so the UI never reaches into `main.gd` on its own.
 
 Autoloads stay thin and global: `EventBus` (signals only), `SaveManager`
@@ -355,22 +359,101 @@ at zero they are removed via `remove_building`.
 Weapon buildings additionally carry a `WeaponData`: fire rate, damage, range,
 projectile type, targeting rule.
 
-### Workers and carriers
-Two separate populations, bought in the shop, selected in the worker UI:
+### Workers and carriers (implemented, Stage 2a)
 
-- **Mining workers** — clicked, then sent to a mine. They build a worker house
-  there (capacity TBD), then gather automatically into a local stockpile. They
-  are damaged in transit; once stationed they are safe. If their house is
-  destroyed, they flee home and gathering at that site stops.
-- **Building workers** — idle by default; automatically build and repair. The
-  player sets a build-vs-repair priority. They are not sent manually.
+**Diagram: [`docs/units.svg`](docs/units.svg)** — what each kind of worker
+does, the states a unit moves through, and who owns which piece of data.
 
-**Carriers** ferry stockpiled goods from worker houses to the base. This is the
-second convoy the player must protect, and it is what makes roads and wall
-corridors worth designing.
+Three kinds, all in one store: **miners** (sent to a mine), **builders** and
+**carriers** (work on their own). One store means
+one projectile hit test will cover every unit, which is what makes friendly
+fire cheap later.
 
-All three are units in the same SoA store, so a single projectile hit test
-covers them, which is what makes friendly fire cheap to implement.
+| Piece | File | Job |
+|---|---|---|
+| `UnitStore` | `units/unit_store.gd` | Parallel arrays per unit (D2): kind, pos, path, state, task, home, target, inside, fetch, carry, hp. Stable ids from a free list. |
+| `DropStore` | `units/drop_store.gd` | Resources lying on the ground: kind, landing spot, bounce start and tick, source mine, who is fetching it. |
+| `UnitSystem` | `units/unit_system.gd` | All behaviour. Stepped once per tick from `main._simulate`. Owns the unit and drop stores, pathing, the job board, each mine's progress toward its next drop, and which miner is the commuter. |
+| `UnitPathing` | `units/unit_pathing.gd` | `AStarGrid2D` over the map. Solid = impassable, weight = `cost / COST_OPEN`. Diagonals only past open corners. |
+| `JobBoard` | `units/job_board.gd` | Builder work in priority order build > repair > cobble > chop, nearest first, at most 4 builders per job. |
+| `UnitRenderer` | `units/unit_renderer.gd` | One `MultiMeshInstance2D` per (kind, animation), plus one per resource for drops (under the units). Drawn once per frame, after the simulation. |
+
+**How it plays.**
+- **Run start.** Placing the base places a finished builder house, carrier
+  house and miner home (`worker_house`) on free tiles near the base, each with
+  one worker inside. The miner is the **commuter** (`_commuter`,
+  `_commuter_house`).
+- **Only busy units are drawn.** `UnitStore.inside` is 1 while a unit is in a
+  building: new units spawn inside; `walk()` brings them out; arriving home
+  (`GO_HOME`, `FLEE`), or standing beside home with nothing to do, puts them
+  back in. The renderer skips inside and stationed units. When a house falls,
+  anyone inside is exposed.
+- **Beds.** Builder and carrier houses hold `HOUSE_CAPACITY` each (a stat,
+  default 3, so occupancy upgrades are ordinary modifiers). The shop asks
+  `main._purchase_check` before selling a worker and greys the slot out with
+  the reason ("Needs a free bed…").
+- **Sending miners.** Click the miner slot in the worker bar, then a mine.
+  Shift keeps the mode open to send more; the cancel key or any refusal ends
+  it, with the reason shown in a toast. `send_miner` prefers an idle *bought*
+  miner: it moves into the mine's home, and a mine with no home gets one as a
+  construction site, paid for right then from `BuildingData.cost` (refused if
+  unaffordable). With no bought miner idle, the commuter goes: into the
+  mine's home if a bed is free (for good), otherwise it walks there (`TO_MINE`)
+  and mines outside (`MINING`: visible, exposed, free). If its mine home falls,
+  it returns to its house by the base and is a commuter again.
+- **Construction.** A site is a real building with `progress < 1`, drawn faded
+  (`CONSTRUCTION_ALPHA`) until `construction.png` exists. Builders add work;
+  more builders build faster. Miners wait beside the site, then move in.
+- **Gathering drops resources.** Stationed miners are hidden and safe; the
+  commuter mines outside. Each adds `GATHER_RATE` work per second to its
+  mine's progress; every whole unit pops one
+  drop out of the mine, bouncing (0.4 s, drawn only) onto a random free,
+  walkable tile within 2 of it. At `drops_per_mine_cap` (20) drops from one
+  mine, it pauses until some are picked up.
+- **Fetching.** Carriers only: no other unit carries resources. A carrier
+  claims the nearest landed, unclaimed drop, walks to it, takes it plus any
+  landed drops of the same resource within 48 px, up to `CARRY_CAPACITY` (10),
+  and carries them to the base (the nearest depot in 2b). The claim stops two
+  carriers racing for one drop.
+- **Losing a building.** Units working on it or walking to it drop the job. If
+  a worker house falls, its miners flee to the base and gathering there stops.
+
+**Pathing.** One path per trip, computed when the trip starts; nothing is
+cached between trips. With dozens of workers this is cheap (200 walking units
+measured at 0.75 ms per tick). A path to a building is found by temporarily
+opening that building's own footprint, so a path can end on a solid tile. The
+pathing grid is rebuilt once per map, then kept in step through
+`WorldGrid.tiles_changed`, which carries only the changed indices. `notify` is
+off while a level is being generated or loaded, so a new map does not announce
+itself one tile at a time.
+
+**Thinking is staggered.** An idle unit decides again every `THINK_INTERVAL`
+ticks (20, a third of a second), not every tick. Walking and working run every
+tick.
+
+**Animation.** Each unit kind names an idle sheet and an optional walk sheet
+in `UnitRenderer.LOOKS`. Sheets are horizontal strips, frames = width /
+height. A shader picks the frame and mirrors it when the unit faces left
+(sheets face right). Frames advance on `tick_count`, so animation pauses and
+speeds up with the game. The quad is a hand-built 2D `ArrayMesh`: a
+`QuadMesh` draws upside down in 2D.
+
+### Rules for simulation code
+
+Both learned from bugs; neither shows on screen until it breaks.
+
+- **Save references as cells, never as ids.** Building and unit ids are handed
+  out again when a run loads, so a saved id points at the wrong thing. A
+  unit's home, a house's mine, a drop's mine, each mine's progress, the
+  commuter's house and the mine it works are all saved by cell and looked up
+  again after the level loads. Claims and trips are not saved:
+  units decide again after loading. This is also why units load *after* the
+  level.
+- **No lambdas on signals inside `RefCounted` classes.** A lambda keeps a strong
+  reference to `self`. Connected to another object's signal, it forms a cycle
+  that never frees (roster ↔ units leaked this way). Connect a method instead:
+  `units.changed.connect(_on_units_changed)`. `boot.sh` now fails on any
+  "leaked" or "still in use" line at exit.
 
 ### Enemies
 Spawn at map edges. Their goal is the base, but they select targets by score:
@@ -631,6 +714,40 @@ the editor has imported it once. Debug builds print the list of missing
 sprites at startup. Nothing ever writes into `assets/`: the artist names the
 files, code references them by path.
 
+### Planned: Stages 2b-3b
+
+How the decisions in `docs/DESIGN.md` will be built. Written before the code so
+the seams are agreed; each part moves to "implemented" when it lands.
+
+**Timed world events (2b).** Stump decay and tree regrowth are scheduled in
+simulation ticks on a small scheduler ordered by due tick. Scheduled events
+are saved with the run, and regrowth positions come from a run RNG whose
+state is also saved — so a loaded run regrows exactly the trees it would have.
+
+**Crafting and unlocks (2b).** `ShopItemData` gains a section (Buy or Craft),
+two new kinds (BUILDING, into the owned-buildings inventory; ITEM, into an
+item inventory) and an optional blueprint requirement. The run keeps one saved
+set of unlock ids — `"blueprint:depot"`, `"item:water_bucket"` — which is
+where points of interest and enemies will add blueprints later. "Buy costs
+only gold, Craft costs no gold" is a data rule, checked by a test over the
+catalogue rather than enforced in code.
+
+**Terrain changes at runtime (2c).** Cobble is a `Ground` type appended per D8.
+Turning lava into cobble is `set_ground_at`, a redraw of that one tile, and a
+`tiles_changed`. The level save already stores ground per tile, so cobble
+persists with no save change.
+
+**Fog of war (3b).** A `WorldGrid` layer, one byte per tile. Units reveal a
+radius only when they cross into a new tile, never every frame. It is drawn as
+one texture, one pixel per tile, updated per changed tile and laid over the
+map by a shader: one draw call, no node per tile. Saved with the level. Things
+under fog are neither drawn nor clickable.
+
+**Points of interest (3b).** Placed by the generator, hidden by fog, and
+interacted with by the explorer. Blueprints go to the run's unlock set; meta
+currencies go to the permanent profile, which is why the profile migrates
+rather than refuses (section 9).
+
 ### Progression
 Global XP from kills, exploration, and a slow survival drip that prevents
 stagnation from stalling progress. On level-up the clock pauses and the player
@@ -696,16 +813,20 @@ one key in `main.gd.save_run()`, never touching the autoload.
 
 ### What a run save holds, and load order
 
-    level, clock, economy, roster, shop, modifiers
+    level, clock, economy, roster, shop, modifiers, units
 
 Load order is load-bearing: **shop purchases before modifiers**, because
 rebuilding an upgrade's modifiers reads its level from the purchase count; and
 **modifiers before the level**, because they are cheap to reject, so a run with
-a missing upgrade is refused before the map is built. On any failure `main.gd`
+a missing upgrade is refused before the map is built. **Units after the
+level**, because they refer to buildings by cell. On any failure `main.gd`
 starts a new run, which resets everything that may have partly loaded.
 
-Keys missing from older saves are additive (a run from before the economy gets
-the starting resources), so `RUN_VERSION` has not moved.
+Keys missing from older saves are additive where that is safe (a run from
+before the economy gets the starting resources). Stage 2a moved `RUN_VERSION`
+to 2: a run saved before units existed would load with miners on the roster but
+no bodies, so older run saves are refused and a new run starts. The profile is
+never refused.
 
 ### Two files, two policies
 

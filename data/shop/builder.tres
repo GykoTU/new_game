@@ -7,7 +7,7 @@
 script = ExtResource("2_krya5")
 id = "builder"
 display_name = "Builder"
-description = "Idles at the base. Builds and repairs on its own."
+description = "Builds, repairs and chops. Needs a free bed in a builder house."
 icon_path = "res://assets/ui/builder_icon.png"
 kind = 0
 tags = PackedStringArray("builder")

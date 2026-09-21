@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" format=3]
+
+[ext_resource type="Script" path="res://buildings/building_data.gd" id="1_l5q15"]
+
+[resource]
+script = ExtResource("1_l5q15")
+id = "worker_house"
+display_name = "Miner Home"
+texture_path = "res://assets/buildings/worker_house.png"
+max_health = 80.0
+build_work = 6.0
+tags = PackedStringArray("building", "house", "worker_house")
+cost = Dictionary[int, int]({
+3: 5
+})
+is_house = true
+house_for = 0
+allowed_grounds = 159

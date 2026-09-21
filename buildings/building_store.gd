@@ -26,6 +26,9 @@ var _size_y := PackedInt32Array()
 var _health := PackedFloat32Array()
 var _max_health := PackedFloat32Array()
 var _alive := PackedByteArray()
+## 1.0 = complete. Below that the building is a construction site: it occupies
+## its tiles but does nothing until a builder finishes it.
+var _progress := PackedFloat32Array()
 ## Node references cannot live in a packed array. Parallel to the rest by index.
 var _sprite: Array[Sprite2D] = []
 
@@ -38,13 +41,13 @@ var _live_count := 0
 func clear() -> void:
 	_type.clear(); _cell_x.clear(); _cell_y.clear()
 	_size_x.clear(); _size_y.clear()
-	_health.clear(); _max_health.clear(); _alive.clear()
+	_health.clear(); _max_health.clear(); _alive.clear(); _progress.clear()
 	_sprite.clear(); _free.clear(); _by_type.clear()
 	_live_count = 0
 
 
 func add(type: String, cell: Vector2i, size: Vector2i, sprite: Sprite2D,
-		max_health: float = DEFAULT_MAX_HEALTH) -> int:
+		max_health: float = DEFAULT_MAX_HEALTH, progress: float = 1.0) -> int:
 	var id: int
 	if _free.is_empty():
 		id = _type.size()
@@ -53,6 +56,7 @@ func add(type: String, cell: Vector2i, size: Vector2i, sprite: Sprite2D,
 		_size_x.append(size.x); _size_y.append(size.y)
 		_health.append(max_health); _max_health.append(max_health)
 		_alive.append(1)
+		_progress.append(progress)
 		_sprite.append(sprite)
 	else:
 		id = _free[_free.size() - 1]
@@ -62,6 +66,7 @@ func add(type: String, cell: Vector2i, size: Vector2i, sprite: Sprite2D,
 		_size_x[id] = size.x; _size_y[id] = size.y
 		_health[id] = max_health; _max_health[id] = max_health
 		_alive[id] = 1
+		_progress[id] = progress
 		_sprite[id] = sprite
 
 	if not _by_type.has(type):
@@ -139,6 +144,18 @@ func heal(id: int, amount: float) -> float:
 	return _health[id]
 
 
+func get_progress(id: int) -> float:
+	return _progress[id]
+
+
+func is_complete(id: int) -> bool:
+	return _progress[id] >= 1.0
+
+
+func set_progress(id: int, value: float) -> void:
+	_progress[id] = clampf(value, 0.0, 1.0)
+
+
 # --- Queries ------------------------------------------------------------------
 
 ## Live ids of one type. The returned array is a copy; mutating it is harmless.
@@ -179,9 +196,11 @@ func to_save_data() -> Dictionary:
 	var xs := PackedInt32Array()
 	var ys := PackedInt32Array()
 	var hp := PackedFloat32Array()
+	var progress := PackedFloat32Array()
 	for id in alive_ids():
 		types.append(_type[id])
 		xs.append(_cell_x[id])
 		ys.append(_cell_y[id])
 		hp.append(_health[id])
-	return {"types": types, "cells_x": xs, "cells_y": ys, "health": hp}
+		progress.append(_progress[id])
+	return {"types": types, "cells_x": xs, "cells_y": ys, "health": hp, "progress": progress}

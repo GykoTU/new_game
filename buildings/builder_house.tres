@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingData" format=3]
+
+[ext_resource type="Script" path="res://buildings/building_data.gd" id="1_xm5jy"]
+
+[resource]
+script = ExtResource("1_xm5jy")
+id = "builder_house"
+display_name = "Builder House"
+texture_path = "res://assets/buildings/builder_house.png"
+max_health = 80.0
+build_work = 8.0
+tags = PackedStringArray("building", "house", "builder_house")
+is_house = true
+allowed_grounds = 143

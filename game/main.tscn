@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://5td4ornbutf7"]
+[gd_scene load_steps=14 format=3 uid="uid://5td4ornbutf7"]
 
 [ext_resource type="Script" uid="uid://byhj7xovxw0ym" path="res://game/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://game/game_clock.gd" id="2_clock"]
@@ -11,6 +11,8 @@
 [ext_resource type="PackedScene" uid="uid://xjsbgru4486i" path="res://UI/worker_ui.tscn" id="9_worker"]
 [ext_resource type="PackedScene" path="res://UI/resource_bar.tscn" id="10_rbar"]
 [ext_resource type="PackedScene" path="res://UI/stat_overlay.tscn" id="11_sov"]
+[ext_resource type="Script" path="res://units/unit_renderer.gd" id="12_urend"]
+[ext_resource type="PackedScene" path="res://UI/toast.tscn" id="13_toast"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -19,6 +21,9 @@ script = ExtResource("1_main")
 script = ExtResource("2_clock")
 
 [node name="Level" parent="." instance=ExtResource("3_level")]
+
+[node name="UnitRenderer" type="Node2D" parent="."]
+script = ExtResource("12_urend")
 
 [node name="BuildPlacer" type="Node2D" parent="." node_paths=PackedStringArray("level")]
 script = ExtResource("4_placer")
@@ -37,5 +42,7 @@ level = NodePath("../Level")
 [node name="ResourceBar" parent="UI" instance=ExtResource("10_rbar")]
 
 [node name="StatOverlay" parent="UI" instance=ExtResource("11_sov")]
+
+[node name="Toast" parent="UI" instance=ExtResource("13_toast")]
 
 [node name="OptionsMenu" parent="UI" instance=ExtResource("6_options")]
