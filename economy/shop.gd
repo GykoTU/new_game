@@ -85,6 +85,8 @@ func block_reason(item: ShopItemData) -> String:
 		return "Needs a blueprint"
 	if item.kind == ShopItemData.Kind.BUILDING and inventory == null:
 		return "Nowhere to keep buildings"
+	if item.kind == ShopItemData.Kind.ITEM and unlocks == null:
+		return "Nowhere to keep items"
 	if is_maxed(item):
 		return "Max level"
 	if purchase_check.is_valid():
@@ -119,6 +121,8 @@ func buy(item: ShopItemData) -> bool:
 			_modifiers.add_source(UPGRADE_PREFIX + item.id, item.modifiers_at(n))
 		ShopItemData.Kind.BUILDING:
 			inventory.add(item.building_id)
+		ShopItemData.Kind.ITEM:
+			unlocks.add("item:" + item.item_id)
 	purchased.emit(item, n)
 	return true
 

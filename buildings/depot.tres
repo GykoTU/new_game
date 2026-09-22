@@ -10,4 +10,4 @@ texture_path = "res://assets/buildings/depot.png"
 max_health = 120.0
 build_work = 10.0
 tags = PackedStringArray("building", "depot")
-allowed_grounds = 143
+allowed_grounds = 655

@@ -12,7 +12,8 @@ extends RefCounted
 
 ## APPEND-ONLY (D8): saves store one byte per tile, and BuildingData's
 ## allowed_grounds is one bit per entry.
-enum Ground { GRASS_1, GRASS_2, GRASS_3, FLOWERS, ICE, LAVA, WATER, SAND, VOID }
+## APPEND-ONLY (D8): saves store these numbers per tile.
+enum Ground { GRASS_1, GRASS_2, GRASS_3, FLOWERS, ICE, LAVA, WATER, SAND, VOID, COBBLE }
 
 ## Tiles whose ground or occupancy changed at runtime. Pathing, and later fog
 ## of war and enemy flow fields, update only these instead of rescanning the
@@ -49,6 +50,7 @@ const GROUND_BLOCKING := {
 	Ground.LAVA: BLOCKS_UNIT,
 	Ground.WATER: BLOCKS_UNIT,
 	Ground.VOID: BLOCKS_UNIT,
+	Ground.COBBLE: 0,
 }
 
 const GROUND_COST := {
@@ -61,6 +63,7 @@ const GROUND_COST := {
 	Ground.LAVA: COST_IMPASSABLE,
 	Ground.WATER: COST_IMPASSABLE,
 	Ground.VOID: COST_IMPASSABLE,
+	Ground.COBBLE: COST_OPEN,   # cooled lava: made by builders, walkable
 }
 
 var size := Vector2i.ZERO

@@ -69,6 +69,10 @@ var unlocks := Unlocks.new()
 var inventory := BuildingInventory.new()
 ## Marked trees, stumps and regrowth.
 var forest := Forest.new()
+## Lava marked for cobble, and the bucket.
+var lava := LavaWorks.new()
+## Owned items (the bucket), top left. Created in _ready.
+var item_bar
 ## UNIT_TYPES name -> StatBlock
 var type_blocks := {}
 ## True while the player is choosing a mine to send a miner to.
@@ -77,6 +81,9 @@ var _dispatching := false
 ## (debug builds only).
 var _grant_held := 0.0
 var _grants_this_hold := 0
+## Painting lava marks with the water bucket in hand (see _on_paint_started).
+var _paint_on := true
+var _paint_last := Vector2i(-1, -1)
 
 
 func _ready() -> void:
@@ -90,6 +97,21 @@ func _ready() -> void:
 	roster.attach(units)
 	forest.setup(level)
 	units.forest = forest
+	lava.setup(level, unlocks)
+	units.lava = lava
+	var marks := TileMarks.new()
+	marks.name = "LavaMarks"
+	level.add_sibling(marks)   # drawn over the ground, under the units
+	marks.bind(lava, level)
+	item_bar = preload("res://UI/item_bar.gd").new()
+	item_bar.name = "ItemBar"
+	$UI.add_child(item_bar)
+	$UI.move_child(item_bar, options_menu.get_index())   # the options menu stays last
+	item_bar.bind(unlocks)
+	item_bar.item_pressed.connect(_on_item_pressed)
+	build_placer.tile_picked.connect(_on_tile_picked)
+	build_placer.paint_started.connect(_on_paint_started)
+	build_placer.paint_moved.connect(_on_paint_moved)
 	shop.purchase_check = _purchase_check
 	shop.unlocks = unlocks
 	shop.inventory = inventory
@@ -155,6 +177,7 @@ func _start_new_run() -> void:
 	roster.clear()
 	unlocks.reset()
 	inventory.clear()
+	lava.clear()
 	economy.set_all(starting_resources)
 	level.generate()
 	forest.start_new(clock.tick_count, level.used_seed)
@@ -191,6 +214,7 @@ func _load_run(save: Dictionary) -> bool:
 	if not units.load_save_data(save.get("units", {})):
 		return false
 	forest.load_save_data(save.get("forest", {}))
+	lava.load_save_data(save.get("lava", {}))
 	if save.has("clock"):
 		clock.load_save_data(save["clock"])
 	return true
@@ -210,6 +234,7 @@ func save_run() -> void:
 		"unlocks": unlocks.get_save_data(),
 		"inventory": inventory.get_save_data(),
 		"forest": forest.get_save_data(),
+		"lava": lava.get_save_data(),
 		# progression and the day/night director join this as they are built.
 		# SaveManager neither knows nor cares what these keys mean.
 	})
@@ -242,6 +267,7 @@ func _referenced_art() -> Array:
 			paths.append(item.icon_path)
 	paths.append("res://assets/ui/sale_tag.png")
 	paths.append(building_ui.SLOT_TEXTURE)
+	paths.append_array(preload("res://UI/item_bar.gd").art_paths())
 	for data in level.placeable_buildings:
 		if data != null and data.texture == null:
 			paths.append(data.texture_path)
@@ -328,6 +354,64 @@ func _on_building_slot_pressed(type: String) -> void:
 	var where := "next to a mine without one" if type == UnitSystem.WORKER_HOUSE else ""
 	toast.show_message("Click to place%s.  %s: cancel." % [(" " + where) if where != "" else "",
 		Keybinds.describe_action("cancel_placement")], 4.0)
+
+
+## The bucket is taken in hand from the item bar, like a building from the
+## building bar. Empty: the next click on water sends a builder to fill it.
+## Full: drag over lava to mark it for cobble. Cancelling works the same way.
+func _on_item_pressed(id: String) -> void:
+	if build_placer.is_active():
+		return
+	_end_dispatch()
+	var cancel := Keybinds.describe_action("cancel_placement")
+	if id == LavaWorks.ITEM_WATER_BUCKET:
+		build_placer.start_paint("res://assets/ui/bucket_full.png", _can_mark_cell)
+		toast.show_message("Drag over lava to mark it for cobble.  %s: done." % cancel, 4.0)
+	elif id == LavaWorks.ITEM_BUCKET and not lava.has_water_bucket():
+		build_placer.start_tile("res://assets/ui/bucket_empty.png", _can_fill_cell)
+		toast.show_message("Click a water tile to fill the bucket there.  %s: cancel." % cancel, 4.0)
+
+
+func _can_fill_cell(cell: Vector2i) -> bool:
+	return level.grid.in_bounds(cell) and lava.can_fill_at(level.grid.index(cell))
+
+
+## Lava the bucket can mark, or a tile already marked (so a stroke can unmark).
+func _can_mark_cell(cell: Vector2i) -> bool:
+	if not level.grid.in_bounds(cell):
+		return false
+	var i := level.grid.index(cell)
+	return lava.is_markable(i) or lava.is_marked(i)
+
+
+func _on_tile_picked(cell: Vector2i) -> void:
+	if lava.set_fill_target(level.grid.index(cell)):
+		toast.show_message("A builder will fill the bucket here.", 2.0)
+
+
+## A stroke with the water bucket in hand: the first tile decides whether this
+## stroke marks or unmarks, and dragging carries on with the same choice.
+func _on_paint_started(cell: Vector2i) -> void:
+	if not level.grid.in_bounds(cell):
+		return
+	var i := level.grid.index(cell)
+	_paint_on = not lava.is_marked(i)
+	_paint_last = cell
+	lava.set_mark(i, _paint_on)
+
+
+## Marks (or unmarks) every tile on the line from the last painted tile, so a
+## fast drag does not skip tiles between two mouse events.
+func _on_paint_moved(cell: Vector2i) -> void:
+	if cell == _paint_last:
+		return
+	var from := _paint_last
+	var steps := maxi(absi(cell.x - from.x), absi(cell.y - from.y))
+	for n in range(1, steps + 1):
+		var c := Vector2i((Vector2(from).lerp(Vector2(cell), float(n) / steps)).round())
+		if level.grid.in_bounds(c):
+			lava.set_mark(level.grid.index(c), _paint_on)
+	_paint_last = cell
 
 
 ## Left click on a plain tree marks it for chopping (or unmarks it). Builders

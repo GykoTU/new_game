@@ -104,12 +104,16 @@ First loop the player can actually watch happen.
 
 ## Stage 2c — Cobble
 
-- [ ] Bucket: crafted from wood, one-off (`bucket_empty.png`)
-- [ ] A builder fills it once at water; it becomes the permanent water bucket
-      (`bucket_full.png`), usable by every builder
-- [ ] Builders turn marked lava tiles into cobble for builder time only
-      (new walkable ground type, appended to `Ground` per D8)
-- [ ] Gold mines become reachable
+- [x] Bucket: crafted from wood (5), one-off, leaves the shop once owned;
+      shown in the item bar (top left)
+- [x] Click the bucket in the item bar, then a water tile (placement-style
+      ghost); a builder goes there and fills it once, and it becomes the
+      permanent water bucket, usable by every builder
+- [x] Click and drag to mark lava; builders cobble marked tiles for builder
+      time only (3 builder-seconds each, faster with more builders and
+      BUILD_SPEED); `Ground.COBBLE` appended per D8
+- [x] Gold mines become reachable; miner houses, depots and houses can stand
+      on cobble
 
 ## Stage 3 — Day/night and the run
 

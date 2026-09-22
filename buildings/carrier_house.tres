@@ -12,4 +12,4 @@ build_work = 8.0
 tags = PackedStringArray("building", "house", "carrier_house")
 is_house = true
 house_for = 2
-allowed_grounds = 143
+allowed_grounds = 655

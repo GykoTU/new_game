@@ -40,6 +40,7 @@ const GROUND_FILES := {
 	Ground.WATER: "ground_water.png",
 	Ground.SAND: "ground_sand.png",
 	Ground.VOID: "ground_void.png",
+	Ground.COBBLE: "ground_cobble.png",
 }
 
 const BUILDING_FILES := {
@@ -306,6 +307,15 @@ func place_construction(type: String, cell: Vector2i) -> int:
 	if id != BuildingStore.NONE:
 		building_placed.emit(type, cell)
 	return id
+
+
+## Changes one tile's ground at runtime (lava to cobble) and redraws just
+## that tile. The grid announces the change, so pathing updates that tile.
+func set_ground_runtime(cell: Vector2i, g: int) -> void:
+	if not grid.in_bounds(cell):
+		return
+	grid.set_ground(cell, g)
+	ground_layer.set_cell(cell, _source_ids[g], Vector2i.ZERO)
 
 
 ## Adds a generated 1x1 feature (tree, stump...) on a free tile at runtime.

@@ -26,12 +26,18 @@ reachable.
    chopped.
 2. Wood crafts a **bucket** — a one-off, there to teach crafting and that the
    world needs workarounds.
-3. A builder fills it **once** at water. It becomes a permanent **water
+3. The player clicks the bucket in the item bar and clicks a water tile, the
+   same way a building is placed; a builder then goes there and fills it
+   **once**. It becomes a permanent **water
    bucket**, available to every builder. From then on, turning lava into
    cobble costs **builder time only** — no water trips, no resources. The
    bucket is a tutorial item: it teaches crafting and that the world needs
    workarounds.
-4. Builders turn lava into **cobble**, a walkable ground type.
+4. Builders turn lava into **cobble**, a walkable ground type. To mark lava,
+   the player takes the **water bucket** from the item bar (top left) and
+   drags over lava with it in hand; starting a stroke on a marked tile unmarks
+   instead. Builders cobble marked tiles they can reach, working inward from
+   the edge.
 5. Cobble opens the way to **gold mines**.
 
 **Trees:** a chopped tree leaves a stump, the stump disappears after a while,

@@ -33,6 +33,8 @@ var board := JobBoard.new()
 var level: LevelGenerator
 ## Marked trees and chopping (Stage 2b). Optional: without it, builders never chop.
 var forest: Forest
+## Lava marks, cobble and the bucket (Stage 2c). Optional, like forest.
+var lava: LavaWorks
 var economy: Economy
 var modifiers: ModifierSet
 ## "miner" / "builder" / "carrier" -> StatBlock, one per type (D7).
@@ -68,6 +70,10 @@ func setup(p_level: LevelGenerator, p_economy: Economy, p_modifiers: ModifierSet
 	board.set_provider(JobBoard.Kind.BUILD, _construction_sites)
 	board.set_provider(JobBoard.Kind.REPAIR, _damaged_buildings)
 	board.set_provider(JobBoard.Kind.CHOP, _marked_trees)
+	board.set_provider(JobBoard.Kind.COBBLE, _cobble_tiles)
+	board.set_provider(JobBoard.Kind.FILL, _fill_tiles)
+	board.set_position_lookup(_tile_pos, JobBoard.Kind.COBBLE)
+	board.set_position_lookup(_tile_pos, JobBoard.Kind.FILL)
 	board.set_position_lookup(_building_pos)
 
 
@@ -357,10 +363,11 @@ func _arrive(id: int) -> void:
 			else:
 				store.home[id] = UnitStore.NONE
 		UnitStore.Task.TO_JOB:
-			if level.store.is_alive(store.target[id]):
-				store.state[id] = UnitStore.State.WORKING
+			if JobBoard.is_tile_job(store.job[id]) or level.store.is_alive(store.target[id]):
+				store.state[id] = UnitStore.State.WORKING   # tile jobs re-check in _work_tile
 			else:
 				store.target[id] = UnitStore.NONE
+				store.job[id] = UnitStore.NONE
 		UnitStore.Task.TO_MINE:
 			if level.store.is_alive(store.target[id]):
 				store.state[id] = UnitStore.State.MINING
@@ -384,13 +391,20 @@ func _take_job(id: int) -> bool:
 	var from := _cell_of(id)
 	var tries := 0
 	for job in board.candidates(store.pos[id]):
+		var kind: int = job[0]
 		var b: int = job[1]
-		if _workers_on(b) >= JobBoard.MAX_WORKERS:
+		if _workers_on(b, kind) >= JobBoard.max_workers(kind):
 			continue
-		var cells := _cells_to(from, b)
+		var cells: Array[Vector2i]
+		if JobBoard.is_tile_job(kind):
+			# Stand next to the tile: lava and water can't be stood on.
+			cells = pathing.cells_to_building(from, level.grid.cell_at(b), Vector2i.ONE)
+		else:
+			cells = _cells_to(from, b)
 		tries += 1
 		if not cells.is_empty():
 			store.target[id] = b
+			store.job[id] = kind
 			_walk_cells(id, cells, UnitStore.Task.TO_JOB)
 			return true
 		if tries >= 5:
@@ -400,6 +414,9 @@ func _take_job(id: int) -> bool:
 
 func _work(id: int, dt: float) -> void:
 	var b: int = store.target[id]
+	if JobBoard.is_tile_job(store.job[id]):
+		_work_tile(id, dt)
+		return
 	if not level.store.is_alive(b):
 		_stop_working(id)
 		return
@@ -426,18 +443,59 @@ func _work(id: int, dt: float) -> void:
 		_stop_working(id)
 
 
+## Tile jobs: cobble a marked lava tile, or fill the bucket at the water.
+func _work_tile(id: int, dt: float) -> void:
+	var i: int = store.target[id]
+	var work := _stat(WorkerRoster.Kind.BUILDER, Stats.Id.BUILD_SPEED) * dt
+	if lava == null:
+		_stop_working(id)
+	elif store.job[id] == JobBoard.Kind.COBBLE:
+		if not lava.is_marked(i) or not lava.has_water_bucket() or lava.cobble(i, work):
+			_stop_working(id)   # done, or unmarked meanwhile
+	elif store.job[id] == JobBoard.Kind.FILL:
+		if lava.has_water_bucket() or lava.fill(work):
+			_stop_working(id)
+	else:
+		_stop_working(id)
+
+
 func _stop_working(id: int) -> void:
+	store.job[id] = UnitStore.NONE
 	store.target[id] = UnitStore.NONE
 	store.state[id] = UnitStore.State.IDLE
 	store.think_at[id] = tick
 
 
-func _workers_on(b: int) -> int:
+## Builders working, or on their way to work, on this job. Tile jobs and
+## building jobs never count against each other (their ids are different
+## things: tile indices and building ids).
+func _workers_on(b: int, kind: int) -> int:
+	var tile := JobBoard.is_tile_job(kind)
 	var n := 0
+	if kind == JobBoard.Kind.FILL:
+		# There is one bucket: every water tile is the same job.
+		for id in store.size():
+			if store.is_alive(id) and store.job[id] == JobBoard.Kind.FILL:
+				n += 1
+		return n
 	for id in store.size():
-		if store.is_alive(id) and store.target[id] == b and store.kind[id] == WorkerRoster.Kind.BUILDER:
+		if store.is_alive(id) and store.target[id] == b and store.kind[id] == WorkerRoster.Kind.BUILDER \
+				and JobBoard.is_tile_job(store.job[id]) == tile \
+				and (not tile or store.job[id] == kind):
 			n += 1
 	return n
+
+
+func _cobble_tiles() -> PackedInt32Array:
+	return lava.cobble_jobs() if lava != null else PackedInt32Array()
+
+
+func _fill_tiles() -> PackedInt32Array:
+	return lava.fill_jobs() if lava != null else PackedInt32Array()
+
+
+func _tile_pos(i: int) -> Vector2:
+	return level.cell_to_world(level.grid.cell_at(i))
 
 
 func _construction_sites() -> PackedInt32Array:
@@ -638,8 +696,9 @@ func _on_building_removed(b: int, _type: String, _cell: Vector2i) -> void:
 	for id in store.size():
 		if not store.is_alive(id):
 			continue
-		if store.target[id] == b:
+		if store.target[id] == b and not JobBoard.is_tile_job(store.job[id]):
 			store.target[id] = UnitStore.NONE
+			store.job[id] = UnitStore.NONE
 			if store.state[id] != UnitStore.State.STATIONED:
 				store.state[id] = UnitStore.State.IDLE
 				store.think_at[id] = tick

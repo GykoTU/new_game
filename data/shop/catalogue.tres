@@ -11,7 +11,8 @@
 [ext_resource type="Resource" path="res://data/shop/craft_carrier_house.tres" id="8_cch"]
 [ext_resource type="Resource" path="res://data/shop/craft_depot.tres" id="9_cdp"]
 [ext_resource type="Resource" path="res://data/shop/craft_miner_house.tres" id="10_cmh"]
+[ext_resource type="Resource" path="res://data/shop/craft_bucket.tres" id="11_bkt"]
 
 [resource]
 script = ExtResource("6_kpakn")
-items = Array[ExtResource("1_fe8ij")]([ExtResource("2_k3djh"), ExtResource("3_coi0a"), ExtResource("4_k3djh"), ExtResource("4_1u4h4"), ExtResource("5_bexau"), ExtResource("7_cbh"), ExtResource("8_cch"), ExtResource("10_cmh"), ExtResource("9_cdp")])
+items = Array[ExtResource("1_fe8ij")]([ExtResource("2_k3djh"), ExtResource("3_coi0a"), ExtResource("4_k3djh"), ExtResource("4_1u4h4"), ExtResource("5_bexau"), ExtResource("7_cbh"), ExtResource("8_cch"), ExtResource("10_cmh"), ExtResource("9_cdp"), ExtResource("11_bkt")])

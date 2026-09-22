@@ -762,11 +762,53 @@ marked tree to a placed, built building, and the timers in between.
   `can_place` require a mine that no other miner house touches; placing one
   links it to that mine (`UnitSystem._on_building_placed`).
 
+### Lava, cobble and the bucket (implemented, Stage 2c)
 
-**Terrain changes at runtime (2c).** Cobble is a `Ground` type appended per D8.
-Turning lava into cobble is `set_ground_at`, a redraw of that one tile, and a
-`tiles_changed`. The level save already stores ground per tile, so cobble
-persists with no save change.
+**Diagram: [`docs/cobble-flow.svg`](docs/cobble-flow.svg)** — the bucket's
+stages, tile jobs, and how a painted line of lava becomes a road to gold.
+
+| Piece | File | Job |
+|---|---|---|
+| `LavaWorks` | `Level/lava_works.gd` | Lava marks, cobble progress per tile, filling the bucket. |
+| `TileMarks` | `Level/tile_marks.gd` | Draws the marked tiles (a see-through fill and outline); redrawn only when marks change. |
+| item bar | `UI/item_bar.gd` | Owned items, top left: one slot per item, showing its best stage. Clicking one emits `item_pressed`. |
+
+- **Cobble** is `Ground.COBBLE`, appended (D8): walkable at `COST_OPEN`, drawn
+  with `ground_cobble.png`, and allowed under houses and depots
+  (`allowed_grounds` bit 9). `LevelGenerator.set_ground_runtime` changes one
+  tile and redraws it; the grid announces it, so pathing updates just that
+  tile. The level save already stores ground per tile, so cobble persists
+  with no save change.
+- **The bucket** is a Craft item of the new shop kind `ITEM` (appended), a
+  one-off (`max_level` 1) that leaves the shop once owned. Items are unlocks:
+  crafting adds `"item:bucket"`, filling adds `"item:water_bucket"`.
+- **Tile jobs.** `JobBoard` gains `FILL` (appended) and the priority
+  build > repair > fill > cobble > chop. COBBLE and FILL list *grid tile
+  indices*, not building ids (`JobBoard.is_tile_job`); `UnitStore.job` records
+  which kind a builder's `target` is, so building removal never touches a
+  tile job. A builder walks to a walkable tile next to the lava or water
+  (`cells_to_building` with a 1x1 footprint), which is why cobbling works
+  inward from the edge: a tile with no walkable neighbour waits.
+- **Filling**: the player clicks the empty bucket in the item bar and then a
+  water tile, exactly like placing a building — `BuildPlacer.start_tile` shows
+  the same green/red ghost, cancels the same way, and emits `tile_picked`.
+  That one tile is the FILL job (`LavaWorks.set_fill_target`, saved by cell);
+  without it builders do not go looking for water. Only one builder takes it,
+  and after `fill_work` (2) builder-seconds the water bucket exists for good.
+- **Cobbling**: COBBLE lists marked lava only once the water bucket exists.
+  `cobble_work` (3) builder-seconds per tile at `BUILD_SPEED`, up to 4
+  builders per tile; a finished tile loses its mark.
+- **Marking lava needs the bucket in hand.** Clicking the full bucket in the
+  item bar starts `BuildPlacer.start_paint`: the ghost stays in hand and the
+  placer reports each stroke (`paint_started`, `paint_moved`) until the player
+  cancels. `main` marks every tile on the line between two mouse events, so a
+  fast drag skips none; the first tile of a stroke decides whether that stroke
+  marks or unmarks. Only free lava counts; clicking lava with empty hands does
+  nothing.
+- **Saved**: marks and progress by cell, and the fill progress; the bucket is
+  in the unlocks.
+
+### Planned: Stage 3b
 
 **Fog of war (3b).** A `WorldGrid` layer, one byte per tile. Units reveal a
 radius only when they cross into a new tile, never every frame. It is drawn as

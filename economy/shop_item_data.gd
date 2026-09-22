@@ -11,6 +11,9 @@ enum Kind {
 	## Adds one building of `building_id` to the owned-buildings inventory, to
 	## be placed from the building bar. (Appended: kinds are saved as ints.)
 	BUILDING,
+	## Gives the run the item `item_id` (an unlock "item:<id>"), e.g. the
+	## bucket. Usually a one-off: set max_level to 1. (Appended.)
+	ITEM,
 }
 
 ## Which tab of the shop it is in. Buy is paid in gold only, Craft in
@@ -52,6 +55,10 @@ enum Section {
 ## BuildingData id added to the inventory.
 @export var building_id := ""
 
+@export_group("Item")
+## Added to the run's unlocks as "item:<item_id>".
+@export var item_id := ""
+
 @export_group("Upgrade")
 ## The modifiers at level 1. Level N scales them: FLAT and INCREASE by N,
 ## MULTIPLIER to the power N. So "+10% move speed" at level 3 is +30%, and
@@ -61,7 +68,7 @@ enum Section {
 
 ## Tags used to resolve this item's price.
 func price_tags() -> PackedStringArray:
-	var out := PackedStringArray(["shop", ["worker", "upgrade", "building"][kind]])
+	var out := PackedStringArray(["shop", ["worker", "upgrade", "building", "item"][kind]])
 	for t in tags:
 		if not out.has(t):
 			out.append(t)

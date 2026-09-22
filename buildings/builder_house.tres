@@ -11,4 +11,4 @@ max_health = 80.0
 build_work = 8.0
 tags = PackedStringArray("building", "house", "builder_house")
 is_house = true
-allowed_grounds = 143
+allowed_grounds = 655

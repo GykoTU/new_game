@@ -35,7 +35,11 @@ func bind(shop: Shop, economy: Economy, modifiers: ModifierSet) -> void:
 	_build()
 	economy.changed.connect(func(_k, _a): refresh())
 	modifiers.changed.connect(refresh)
-	shop.purchased.connect(func(_item, _n): refresh())
+	shop.purchased.connect(func(item, _n):
+		if item.kind == ShopItemData.Kind.ITEM:
+			_rebuild()
+		else:
+			refresh())
 	if shop.unlocks != null:
 		shop.unlocks.changed.connect(_rebuild)
 	refresh()
@@ -61,6 +65,8 @@ func _build() -> void:
 	for item in _shop.items():
 		if item == null or item.section != section or not _shop.is_known(item):
 			continue
+		if item.kind == ShopItemData.Kind.ITEM and _shop.is_maxed(item):
+			continue   # a one-off item already owned: it leaves the shop
 		var button := Button.new()
 		button.custom_minimum_size = slot_size
 		button.tooltip_text = item.description
@@ -129,6 +135,8 @@ func refresh() -> void:
 			level.text = "Bought %d" % n
 		elif item.kind == ShopItemData.Kind.BUILDING:
 			level.text = "Crafted %d" % n
+		elif item.kind == ShopItemData.Kind.ITEM:
+			level.text = "One-off"
 		elif item.max_level > 0:
 			level.text = "Lv %d / %d" % [n, item.max_level]
 		else:
