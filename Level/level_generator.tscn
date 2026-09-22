@@ -6,6 +6,7 @@
 [ext_resource type="Resource" path="res://buildings/worker_house.tres" id="4_whouse"]
 [ext_resource type="Resource" path="res://buildings/builder_house.tres" id="5_bhouse"]
 [ext_resource type="Resource" path="res://buildings/carrier_house.tres" id="6_chouse"]
+[ext_resource type="Resource" path="res://buildings/depot.tres" id="7_depot"]
 
 [node name="level_generator" type="Node2D" unique_id=132605351]
 script = ExtResource("1_ty8jg")
@@ -13,6 +14,6 @@ map_size = Vector2i(100, 100)
 generate_on_ready = false
 mine_chance = 1.0
 sand_width = 2
-tree_chance_grass = 0.0
+tree_chance_grass = 0.02
 tree_chance_flowers = 0.078
-placeable_buildings = Array[ExtResource("2_0gvok")]([ExtResource("3_egh7j"), ExtResource("4_whouse"), ExtResource("5_bhouse"), ExtResource("6_chouse")])
+placeable_buildings = Array[ExtResource("2_0gvok")]([ExtResource("3_egh7j"), ExtResource("4_whouse"), ExtResource("5_bhouse"), ExtResource("6_chouse"), ExtResource("7_depot")])

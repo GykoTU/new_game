@@ -5,14 +5,13 @@
 [resource]
 script = ExtResource("1_l5q15")
 id = "worker_house"
-display_name = "Miner Home"
+display_name = "Miner House"
 texture_path = "res://assets/buildings/worker_house.png"
 max_health = 80.0
 build_work = 6.0
 tags = PackedStringArray("building", "house", "worker_house")
-cost = Dictionary[int, int]({
-3: 5
-})
+must_touch_prefix = "mine_"
+one_per_touched = true
 is_house = true
 house_for = 0
 allowed_grounds = 159

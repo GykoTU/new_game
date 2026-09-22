@@ -53,8 +53,8 @@ First loop the player can actually watch happen.
 - [x] Pathfinding: `AStarGrid2D` weighted by the cost grid, kept in step
       through `WorldGrid.tiles_changed`. One path per trip; route caching was
       not needed (200 walking units: 0.75 ms per tick)
-- [x] Run start: a builder house, carrier house and miner home next to the
-      base, one worker in each
+- [x] Run start: a builder house and a carrier house next to the base, one
+      worker in each, plus one miner with no house (the commuter)
 - [x] Housing: builder and carrier houses hold 3 each (`HOUSE_CAPACITY` stat);
       a builder or carrier can only be bought while a bed is free, and the
       shop shows why not
@@ -65,40 +65,42 @@ First loop the player can actually watch happen.
       more builders build faster; sites drawn faded until `construction.png`
 - [x] Sending miners: select the miner slot, click a mine; one idle miner per
       click, Shift to send several; refusals shown in a toast
-- [x] Worker house: one per mine, 3 miners, built by a builder on a free tile
-      next to the mine; miners wait until it stands, then move in
+- [x] Miner house: crafted (5 wood), placed touching a mine that has none,
+      3 miners, built by a builder; miners wait until it stands, then move in
 - [x] Gathering while stationed; flee to the base if the house is destroyed
 - [x] Fixes after first play:
   - [x] Units are drawn only while busy; idle ones wait inside their building
   - [x] Clicking the miner slot with no miners says so at once
   - [x] Mined resources bounce out of the mine as drops; carriers (only
         they carry) fetch them to the base; a mine pauses at 20 drops
-  - [x] The starting miner commutes: mines outside for free, moves into a
-        mine's home when a bed is free, returns home if that home falls
-  - [x] A bought miner sent to a mine without a home pays for the home then
-        (placeholder: 5 diamonds, `BuildingData.cost`)
+  - [x] The starting miner commutes from the base: mines outside, moves into
+        the first miner house built (or one it is sent to with a free bed)
+  - [x] Miner houses are bought per mine in the Craft tab and placed next to
+        a mine; bought miners need one to be sent
 - [ ] Player-set builder priorities (build / repair / cobble / chop / fetch)
 - [x] Reachable in 2a: diamond mines (ice). Gold arrives with cobble (2c).
 - [x] Run saves hold units; `RUN_VERSION` 2 (older run saves are refused)
 
 ## Stage 2b — Wood, crafting, buildings
 
-- [ ] Plain trees (`tree`) generate on regular grass
-- [ ] Idle builders chop trees for wood (new resource, appended)
-- [ ] Chopped tree leaves a stump; the stump disappears after a while; a new
-      tree grows later on a random grass tile
-- [ ] Shop split into Buy (gold: NPCs, upgrades) and Craft (resources:
-      buildings, items); Better Pickaxes loses its copper cost
-- [ ] Blueprints: crafting needs one; the run starts knowing bucket, depot,
-      builder house and carrier house
-- [ ] Craftable houses: builder house, carrier house (3 each), paid in
-      resources; miner home cost moves to wood (it is paid on assignment,
-      never placed from the bar)
-- [ ] Owned-buildings inventory and the building bar: crafted buildings in
-      the order they were crafted; hover extends it, partially transparent,
-      to show the rest; click to place. Slot frame
-      `assets/ui/building_slot.png` as a 9-slice.
-- [ ] Depot: carriers deliver to the nearest depot instead of the base
+- [x] Plain trees (`tree`) generate on regular grass (`tree_chance_grass`
+      0.02); fruit trees stay on flowers
+- [x] Wood (new resource, appended). The player marks trees by clicking;
+      builders chop marked trees only (priority below build and repair)
+- [x] Chopped tree leaves a stump and 3 wood drops (carriers fetch them); the
+      stump disappears after 60 s; trees regrow every 45 s up to the start count
+- [x] Shop split into Buy (gold) and Craft (resources) tabs; Better Pickaxes
+      lost its copper cost
+- [x] Blueprints: crafting needs one; unknown items are hidden; the run starts
+      knowing bucket, depot, builder house and carrier house
+- [x] Craftable houses: builder house, carrier house (10 wood each); miner
+      home paid on assignment, 5 wood
+- [x] Building inventory and bar: one slot per type with a count, first-crafted
+      order; always 5 slots on the left; hover + Shift opens more columns to
+      the right (partly transparent); click to place as a construction site;
+      cancel keeps it
+- [x] Miners can only be bought while a finished miner house has a free bed
+- [x] Depot (15 wood): carriers deliver to the nearest of base and depots
 
 ## Stage 2c — Cobble
 
@@ -184,7 +186,11 @@ First loop the player can actually watch happen.
 
 ## Later — noted so they are not lost
 
-- [ ] Assignable builder tasks (idle builders choose on their own until then)
+- [ ] City hall (found as a blueprint): player-set task priorities for a
+      number of builders, miners and carriers, unlocking more control over a
+      run (like Palworld's monitoring stand). Replaces "assignable builder
+      tasks" and the hard-coded build > repair > cobble > chop order
+- [ ] Optional art: a mark sprite for trees marked for chopping (tint for now)
 - [ ] House occupancy upgrades: houses hold more units, and the building
       visibly expands
 - [ ] Fruit: gatherable again, possibly as a special-fruit point of interest

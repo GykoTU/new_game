@@ -17,8 +17,7 @@ description = "+15% miner gather rate per level."
 icon_path = "res://assets/ui/upgrade_pickaxe.png"
 tags = PackedStringArray()
 base_cost = Dictionary[int, int]({
-0: 40,
-2: 5
+0: 40
 })
 cost_growth = 1.5
 max_level = 5

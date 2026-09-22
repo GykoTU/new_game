@@ -23,10 +23,13 @@ extends Resource
 ## For stat targeting, e.g. ["building", "house", "builder_house"].
 @export var tags := PackedStringArray()
 
-## Resources paid when this building is ordered in play (a miner home is paid
-## for when a miner is assigned to a mine without one). Moves to the Craft
-## section of the shop in Stage 2b.
-@export var cost: Dictionary[ResourceKind.Id, int] = {}
+@export_group("Placement")
+## If set, it must be placed touching (8 neighbours) a building whose type
+## starts with this, e.g. "mine_" for a miner house.
+@export var must_touch_prefix := ""
+## With must_touch_prefix: the touched building may not already be touched by
+## another building of this type. One miner house per mine.
+@export var one_per_touched := false
 
 @export_group("Housing")
 ## A house gives beds to one kind of unit; capacity is the HOUSE_CAPACITY stat.

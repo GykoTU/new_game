@@ -25,6 +25,7 @@ const ACTIONS := [
 	["zoom_out",              "Zoom out",          Category.CAMERA, true,  false],
 	["left_click",            "Select / place",    Category.GAME,   true,  false],
 	["cancel_placement",      "Cancel placement",  Category.GAME,   true,  false],
+	["expand_building_bar",   "Expand building bar (hold, over the bar)", Category.GAME, true, false],
 	["game_pause",            "Pause",             Category.GAME,   true,  false],
 	["game_speed_1",          "Speed 1x",          Category.GAME,   true,  false],
 	["game_speed_2",          "Speed 2x",          Category.GAME,   true,  false],

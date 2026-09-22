@@ -21,7 +21,9 @@ reachable.
 ## The progression chain (decided)
 
 1. **Builders chop trees** for wood. Plain trees (`tree`) spawn on regular
-   grass. Idle builders chop on their own.
+   grass. The player **marks** trees by clicking them; builders chop only
+   marked trees, when nothing more urgent needs doing. Fruit trees can't be
+   chopped.
 2. Wood crafts a **bucket** — a one-off, there to teach crafting and that the
    world needs workarounds.
 3. A builder fills it **once** at water. It becomes a permanent **water
@@ -43,21 +45,21 @@ pattern: craft the tool, reshape the map, reach the resource.
 ## Starting state of a run (decided)
 
 - 100 gold (tunable).
-- Three houses next to the base, each with one worker inside: a **builder
-  house** with a builder, a **carrier house** with a carrier, and a **miner
-  home** with a miner.
-- The starting miner **commutes**: sent to a mine, it walks out and mines
-  outside it — visible and unprotected, and it costs nothing. It moves into
-  a mine's miner home when sent to one with a free bed. If that home is
-  destroyed, it goes back to its house by the base. (Later, with day/night,
-  it walks home at night.)
-- Blueprints known: **bucket**, **depot**, **builder house**, **carrier house**.
+- A **builder house** with a builder and a **carrier house** with a carrier,
+  next to the base, free.
+- **One miner, with no house.** It waits in the base. Sent to a mine, it
+  walks out and mines outside it — visible and unprotected. When the first
+  miner house is built it moves in; it also moves into any miner house it is
+  sent to that has a free bed. If its house is destroyed, it flees to the
+  base and commutes again. (Later, with day/night, it walks home at night.)
+- Blueprints known: **bucket**, **depot**, **builder house**, **carrier
+  house**, **miner house**.
 
 ## Units (decided)
 
 | Unit | Bought with | Does |
 |---|---|---|
-| Miner | gold | Sent to a mine; gathers while stationed in that mine's miner home. |
+| Miner | gold | Sent to a mine that has a miner house with a free bed; gathers while stationed in it. |
 | Builder | gold | Builds, repairs, chops wood, fetches water for cobble. Never carries resources. |
 | Carrier | gold | The only unit that carries resources: picks them up and brings them home (base, later a depot). |
 | Explorer | gold | Sent out to explore the map. *(new, not yet designed in detail)* |
@@ -77,14 +79,16 @@ up. Player-set builder priorities are planned.
 
 - **Homes and workers are separate purchases.** Workers are bought with gold
   (Buy); homes cost resources (Craft, from 2b).
-- **One miner home per mine**, holding **3 miners**, built by a builder. It is
-  paid for when a bought miner is assigned to a mine that has none (for now
-  5 diamonds, a placeholder until wood exists). Can't afford it: the miner
-  isn't sent, and the reason is shown.
+- **Miner house: crafted, one per mine.** Bought in the Craft tab (5 wood)
+  for each mine, and placed from the building bar touching a mine that has
+  none. It holds **3 miners** and is built by a builder. Bought miners can
+  only be sent to a mine with a miner house that has a free bed.
 - **Builder houses** and **carrier houses** hold **3** each. The starting ones
-  are free; more are crafted (2b).
-- **No bed, no purchase:** while every builder (or carrier) bed is taken, the
-  shop greys out buying another, and says why.
+  are free; more are crafted.
+- **No bed, no purchase:** while every builder, carrier or miner bed is taken,
+  the shop greys out buying another, and says why. Miner beds are in finished
+  miner houses, and the first miner counts against them too (even while it
+  commutes), so miners never outnumber miner beds.
 - Future upgrades raise occupancy, and the building visibly expands.
 
 ## Shop: Buy and Craft (decided)
@@ -96,12 +100,20 @@ The shop has two sections:
   and items (bucket).
 
 Crafting needs a **blueprint**. Enemies and points of interest award
-blueprints. Sales work in both sections (a SHOP_PRICE modifier, already built).
+blueprints. Items without a known blueprint are **hidden** from the Craft tab.
+Sales work in both sections (a SHOP_PRICE modifier, already built).
 
 ## Buildings (decided)
 
-- Crafted buildings go to the **building bar**, in the order they were crafted,
-  and are placed from there. Builders then construct them.
+- Crafted buildings go to the **building bar** on the left: one slot per
+  building type with a count, in the order each type was first crafted. It
+  always shows 5 slots; with more types, hovering it and holding Shift opens
+  more columns to the right, partly transparent. Buildings are placed from
+  there; builders then construct them.
+- **City hall** (a blueprint to be found): gives the player control over task
+  priorities — how many builders, miners and carriers prefer which jobs, like
+  Palworld's monitoring stand. More control unlocks over the course of a run.
+  Until then, priorities are fixed: build > repair > cobble > chop.
 - **Depot** is the first craftable building: carriers deliver to the nearest
   depot instead of walking all the way to the base.
 

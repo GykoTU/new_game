@@ -6,8 +6,32 @@ extends CanvasLayer
 @onready var _hint: Label = $Panel/VBox/Hint
 
 
+var _tabs := {}   # ShopItemData.Section -> Button
+
+
 func _ready() -> void:
 	visible = false
+	# Buy (gold) and Craft (resources) tabs, above the grid.
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 6)
+	var group := ButtonGroup.new()
+	for s in [ShopItemData.Section.BUY, ShopItemData.Section.CRAFT]:
+		var b := Button.new()
+		b.text = "Buy" if s == ShopItemData.Section.BUY else "Craft"
+		b.tooltip_text = "Workers and upgrades, paid in gold." if s == ShopItemData.Section.BUY \
+			else "Buildings and items, paid in resources. Needs a blueprint."
+		b.toggle_mode = true
+		b.button_group = group
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(96, 30)
+		b.button_pressed = s == ShopItemData.Section.BUY
+		b.pressed.connect(_items.set_section.bind(s))
+		row.add_child(b)
+		_tabs[s] = b
+	var vbox := $Panel/VBox
+	vbox.add_child(row)
+	vbox.move_child(row, 1)
 
 
 func bind(shop: Shop, economy: Economy, modifiers: ModifierSet) -> void:

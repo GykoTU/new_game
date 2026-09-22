@@ -18,6 +18,7 @@ signal changed(kind: int)
 ## Staggered per unit, so idle units never all pathfind on the same tick.
 const THINK_INTERVAL := 20
 const WORKER_HOUSE := "worker_house"
+const DEPOT := "depot"
 
 ## Most drops that may lie around one mine. Once reached, its miners pause
 ## until someone picks some up.
@@ -30,6 +31,8 @@ var drops := DropStore.new()
 var pathing := UnitPathing.new()
 var board := JobBoard.new()
 var level: LevelGenerator
+## Marked trees and chopping (Stage 2b). Optional: without it, builders never chop.
+var forest: Forest
 var economy: Economy
 var modifiers: ModifierSet
 ## "miner" / "builder" / "carrier" -> StatBlock, one per type (D7).
@@ -41,10 +44,12 @@ var _house_blocks := {}   # house building type -> StatBlock, for HOUSE_CAPACITY
 var _house_mine := {}     # worker house id -> mine id
 var _mine_house := {}     # mine id -> worker house id
 var _progress := {}       # mine id -> float: work toward the next drop
-## The run's first miner lives in a miner home next to the base and walks out
-## to mine outside, until it is sent to a mine whose home has a free bed.
+## The run's first miner. It lives in the base and walks out to mine outside
+## a mine, until it moves into a miner house: the first one built, or one it
+## is sent to with a free bed.
 var _commuter := UnitStore.NONE
-var _commuter_house := UnitStore.NONE
+## True once the first miner house has been built; the commuter moves into it.
+var _first_house_done := false
 var _rng := RandomNumberGenerator.new()
 
 
@@ -59,8 +64,10 @@ func setup(p_level: LevelGenerator, p_economy: Economy, p_modifiers: ModifierSet
 	level.level_generated.connect(_on_level_generated)
 	level.building_removed.connect(_on_building_removed)
 	level.construction_completed.connect(_on_construction_completed)
+	level.building_placed.connect(_on_building_placed)
 	board.set_provider(JobBoard.Kind.BUILD, _construction_sites)
 	board.set_provider(JobBoard.Kind.REPAIR, _damaged_buildings)
+	board.set_provider(JobBoard.Kind.CHOP, _marked_trees)
 	board.set_position_lookup(_building_pos)
 
 
@@ -75,7 +82,7 @@ func clear() -> void:
 	_progress.clear()
 	drops.clear()
 	_commuter = UnitStore.NONE
-	_commuter_house = UnitStore.NONE
+	_first_house_done = false
 	for kind in WorkerRoster.Kind.COUNT:
 		changed.emit(kind)
 
@@ -97,14 +104,14 @@ func idle_count(kind: int) -> int:
 	return n
 
 
-## True while the first miner still lives by the base (not moved into a mine's
-## home).
+## True while the first miner still lives in the base (not moved into a miner
+## house).
 func is_commuter(id: int) -> bool:
 	return id == _commuter and store.is_alive(id) and _is_commuting(id)
 
 
 func _is_commuting(id: int) -> bool:
-	return store.home[id] == _commuter_house and _commuter_house != UnitStore.NONE
+	return id == _commuter and store.home[id] == UnitStore.NONE
 
 
 ## Beds in finished houses for this kind of unit.
@@ -115,8 +122,12 @@ func beds(kind: int) -> int:
 	return total
 
 
-## How many more of a kind can be bought right now. Miners live at their mine,
-## so this is only meaningful for builders and carriers.
+## How many more of a kind can be bought right now: beds in finished houses
+## (miner houses, for miners) minus every unit of that kind. The first miner
+## counts too, even while it commutes from the base: otherwise, when it could
+## not move into a house (its house was destroyed and rebuilt, or the house
+## was out of reach), the bed it should have had was sold to a bought miner
+## and the miners outnumbered the beds.
 func free_beds(kind: int) -> int:
 	return beds(kind) - count(kind)
 
@@ -148,25 +159,20 @@ func house_of_mine(mine: int) -> int:
 
 # --- Spawning -----------------------------------------------------------------
 
-## The free start of every run: a builder house, a carrier house and a miner
-## home next to the base, each with one worker inside. The miner is the
-## commuter (see _commuter). Called when the base is placed.
+## The free start of every run: a builder house and a carrier house next to
+## the base, a builder and a carrier inside them, and the first miner, who
+## waits in the base (see _commuter). Called when the base is placed.
 func start_run_kit() -> void:
 	var base := _base_id()
 	if base == UnitStore.NONE:
 		return
-	for type in ["builder_house", "carrier_house", WORKER_HOUSE]:
+	for type in ["builder_house", "carrier_house"]:
 		var cell := _free_cell_near(level.base_cell, type, 4)
 		if cell != LevelGenerator.INVALID_CELL:
 			level.place_building(type, cell)
-			if type == WORKER_HOUSE:
-				_commuter_house = level.grid.get_occupant(cell)
 	spawn_bought(WorkerRoster.Kind.BUILDER)
 	spawn_bought(WorkerRoster.Kind.CARRIER)
-	var anchor := _commuter_house if _commuter_house != UnitStore.NONE else base
-	_commuter = store.spawn(WorkerRoster.Kind.MINER, _spot_next_to(anchor), _commuter_house,
-		_stat(WorkerRoster.Kind.MINER, Stats.Id.MAX_HEALTH), tick)
-	changed.emit(WorkerRoster.Kind.MINER)
+	_commuter = spawn_bought(WorkerRoster.Kind.MINER)
 
 
 ## Adds one unit, as if bought. Builders and carriers move into a house with a
@@ -190,11 +196,10 @@ func spawn_bought(kind: int) -> int:
 
 ## Sends a miner to a mine. Returns "" on success, or the reason it was refused.
 ##
-## An idle bought miner is preferred. It moves into the mine's home; if the
-## mine has none yet, one is ordered (its cost paid now) as a construction
-## site that a builder then builds. With no bought miner idle, the commuter
-## goes instead: into the mine's home if a bed is free, otherwise it mines
-## outside the mine, for free.
+## A mine with a miner house that has a free bed: the nearest idle bought
+## miner moves in (or, with none idle, the first miner). A mine without one:
+## only the first miner can work it, mining outside. Miner houses are crafted
+## and placed next to a mine by the player; they are never ordered from here.
 func send_miner(mine: int) -> String:
 	if not level.store.is_alive(mine) or ResourceKind.id_from_source(level.store.get_type(mine)) == -1 \
 			or not level.store.get_type(mine).begins_with("mine_"):
@@ -203,74 +208,66 @@ func send_miner(mine: int) -> String:
 	if not level.store.is_alive(house):
 		house = UnitStore.NONE
 	var bed_free := house != UnitStore.NONE and residents(house) < capacity(house)
+	var commuter_free := is_commuter(_commuter)
 
-	var miner := _nearest_available(WorkerRoster.Kind.MINER, _building_pos(mine))
-	if miner == UnitStore.NONE:
-		if is_commuter(_commuter) and store.state[_commuter] != UnitStore.State.STATIONED:
-			return _send_commuter(mine, house, bed_free)
+	if bed_free:
+		var miner := _nearest_available(WorkerRoster.Kind.MINER, _building_pos(mine))
+		if miner == UnitStore.NONE and commuter_free:
+			miner = _commuter
+		if miner == UnitStore.NONE:
+			return "No idle miners. Buy one in the shop."
+		return _move_in(miner, house)
+
+	if commuter_free:
+		return _send_commuter_outside(mine)
+	if _nearest_available(WorkerRoster.Kind.MINER, _building_pos(mine)) == UnitStore.NONE:
 		return "No idle miners. Buy one in the shop."
-	var miner_cell := _cell_of(miner)
+	if house != UnitStore.NONE:
+		return "This mine's house is full."
+	return "Build a miner house next to this mine first."
 
-	if house == UnitStore.NONE:
-		var cost := _home_cost()
-		if not economy.can_afford(cost):
-			return "A miner home here costs %s." % _describe(cost)
-		var spots := level.free_cells_around(mine, WORKER_HOUSE, miner_cell)
-		if spots.is_empty():
-			return "There is no ground next to this mine a home can stand on."
-		for c in spots:
-			if not pathing.cells_between(miner_cell, c).is_empty():
-				house = level.place_construction(WORKER_HOUSE, c)
-				break
-		if house == UnitStore.NONE:
-			return "Can't reach this mine yet."
-		economy.spend(cost)
-		_house_mine[house] = mine
-		_mine_house[mine] = house
-	elif not bed_free:
-		return "This mine's home is full."
 
-	var cells := _cells_to(miner_cell, house)
+func _move_in(id: int, house: int) -> String:
+	var cells := _cells_to(_cell_of(id), house)
 	if cells.is_empty():
 		return "Can't reach this mine yet."
-	store.home[miner] = house
-	_walk_cells(miner, cells, UnitStore.Task.TO_MINE_HOUSE)
+	store.home[id] = house
+	store.target[id] = UnitStore.NONE
+	_walk_cells(id, cells, UnitStore.Task.TO_MINE_HOUSE)
 	changed.emit(WorkerRoster.Kind.MINER)
 	return ""
 
 
-func _send_commuter(mine: int, house: int, bed_free: bool) -> String:
+func _send_commuter_outside(mine: int) -> String:
 	var id := _commuter
-	var from := _cell_of(id)
-	if bed_free:
-		var to_house := _cells_to(from, house)
-		if to_house.is_empty():
-			return "Can't reach this mine yet."
-		store.home[id] = house   # moves in for good; its old home by the base stays empty
-		store.target[id] = UnitStore.NONE
-		_walk_cells(id, to_house, UnitStore.Task.TO_MINE_HOUSE)
-	else:
-		if store.state[id] == UnitStore.State.MINING and store.target[id] == mine:
-			return ""   # already mining here
-		var cells := _cells_to(from, mine)
-		if cells.is_empty():
-			return "Can't reach this mine yet."
-		store.target[id] = mine
-		_walk_cells(id, cells, UnitStore.Task.TO_MINE)
+	if store.state[id] == UnitStore.State.MINING and store.target[id] == mine:
+		return ""   # already mining here
+	var cells := _cells_to(_cell_of(id), mine)
+	if cells.is_empty():
+		return "Can't reach this mine yet."
+	store.target[id] = mine
+	_walk_cells(id, cells, UnitStore.Task.TO_MINE)
 	changed.emit(WorkerRoster.Kind.MINER)
 	return ""
 
 
-func _home_cost() -> Dictionary:
-	var data := level.get_building_data(WORKER_HOUSE)
-	return data.cost if data != null else {}
-
-
-static func _describe(cost: Dictionary) -> String:
-	var parts := PackedStringArray()
-	for k in cost:
-		parts.append("%d %s" % [cost[k], ResourceKind.display_of(k)])
-	return ", ".join(parts) if not parts.is_empty() else "nothing"
+## A miner house was placed: link it to the mine it touches that has none.
+## (can_place already made sure there is one.)
+func _on_building_placed(type: String, cell: Vector2i) -> void:
+	if type != WORKER_HOUSE:
+		return
+	var house := level.grid.get_occupant(cell)
+	for y in range(cell.y - 1, cell.y + 2):
+		for x in range(cell.x - 1, cell.x + 2):
+			var c := Vector2i(x, y)
+			if not level.grid.in_bounds(c):
+				continue
+			var m := level.grid.get_occupant(c)
+			if level.store.is_alive(m) and level.store.get_type(m).begins_with("mine_") \
+					and not _mine_house.has(m):
+				_house_mine[house] = m
+				_mine_house[m] = house
+				return
 
 
 # --- Simulation ---------------------------------------------------------------
@@ -319,8 +316,7 @@ func _think(id: int) -> void:
 				if not cells.is_empty():
 					_walk_cells(id, cells, UnitStore.Task.TO_MINE_HOUSE)
 					return
-			if not _is_commuting(id):
-				store.home[id] = UnitStore.NONE   # lost or unreachable: wait in the base
+			store.home[id] = UnitStore.NONE   # lost or unreachable: wait in the base
 			_go_home_if_away(id)
 
 
@@ -407,6 +403,17 @@ func _work(id: int, dt: float) -> void:
 	if not level.store.is_alive(b):
 		_stop_working(id)
 		return
+	if forest != null and forest.is_tree(b):
+		if not forest.is_marked(b):
+			_stop_working(id)   # unmarked while being chopped
+			return
+		var cell := level.store.get_cell(b)
+		var chop := _stat(WorkerRoster.Kind.BUILDER, Stats.Id.BUILD_SPEED) * dt
+		if forest.chop(b, chop, tick):
+			# The tree is a stump now (and this builder already let go of it).
+			for i in forest.wood_per_tree:
+				_pop_drop_at(cell, Vector2i.ONE, ResourceKind.Id.WOOD, DropStore.NONE)
+		return
 	if not level.store.is_complete(b):
 		var work := _stat(WorkerRoster.Kind.BUILDER, Stats.Id.BUILD_SPEED) * dt
 		if level.add_construction_work(b, work):
@@ -441,6 +448,10 @@ func _construction_sites() -> PackedInt32Array:
 	return out
 
 
+func _marked_trees() -> PackedInt32Array:
+	return forest.marked_trees() if forest != null else PackedInt32Array()
+
+
 func _damaged_buildings() -> PackedInt32Array:
 	var out := PackedInt32Array()
 	for b in level.store.alive_ids():
@@ -453,6 +464,11 @@ func _on_construction_completed(b: int) -> void:
 	for id in store.size():
 		if store.is_alive(id) and store.home[id] == b and store.state[id] == UnitStore.State.WAITING:
 			store.state[id] = UnitStore.State.STATIONED
+	# The first miner house built: the first miner moves in, wherever it is.
+	if _house_mine.has(b) and not _first_house_done:
+		_first_house_done = true
+		if is_commuter(_commuter) and residents(b) < capacity(b):
+			_move_in(_commuter, b)
 	var data := level.get_building_data(level.store.get_type(b))
 	if data != null and data.is_house:
 		changed.emit(data.house_for)
@@ -495,8 +511,13 @@ func _pop_drop(mine: int) -> bool:
 	var kind := ResourceKind.id_from_source(level.store.get_type(mine))
 	if kind == -1:
 		return false
-	var origin := level.store.get_cell(mine)
-	var size := level.store.get_size(mine)
+	return _pop_drop_at(level.store.get_cell(mine), level.store.get_size(mine), kind, mine)
+
+
+## A drop of `kind` bounces from the footprint at origin/size onto a random free,
+## walkable tile within 2 of it. `source` is the mine it counts against (its
+## cap), or NONE. Returns false if there is nowhere for it to land.
+func _pop_drop_at(origin: Vector2i, size: Vector2i, kind: int, source: int) -> bool:
 	var spots: Array[Vector2i] = []
 	for y in range(origin.y - 2, origin.y + size.y + 2):
 		for x in range(origin.x - 2, origin.x + size.x + 2):
@@ -508,7 +529,8 @@ func _pop_drop(mine: int) -> bool:
 		return false
 	var cell := spots[_rng.randi() % spots.size()]
 	var jitter := Vector2(_rng.randf_range(-8.0, 8.0), _rng.randf_range(-8.0, 8.0))
-	drops.spawn(kind, _building_pos(mine), level.cell_to_world(cell) + jitter, mine, tick)
+	var from := level.cell_to_world(origin) + level.get_footprint_offset(size)
+	drops.spawn(kind, from, level.cell_to_world(cell) + jitter, source, tick)
 	return true
 
 
@@ -564,16 +586,36 @@ func _pickup(id: int) -> void:
 	_deliver(id)
 
 
-## Walks what the unit carries to the base (the nearest depot, from 2b).
+## Walks what the unit carries to the nearest drop-off: the base or a finished
+## depot, whichever is closer in a straight line. Resources count the moment
+## they arrive at either.
 func _deliver(id: int) -> void:
-	var base := _base_id()
-	if base == UnitStore.NONE:
+	var to := _nearest_dropoff(store.pos[id])
+	if to == UnitStore.NONE:
 		return
-	var cells := _cells_to(_cell_of(id), base)
+	if _is_beside(id, to):
+		_dropoff(id)
+		store.think_at[id] = tick
+		return
+	var cells := _cells_to(_cell_of(id), to)
+	if cells.is_empty() and to != _base_id():
+		to = _base_id()   # that depot is cut off: fall back to the base
+		cells = _cells_to(_cell_of(id), to)
 	if not cells.is_empty():
 		_walk_cells(id, cells, UnitStore.Task.TO_DROPOFF)
-	elif _is_beside(id, base):
-		_dropoff(id)
+
+
+func _nearest_dropoff(from: Vector2) -> int:
+	var best := _base_id()
+	var best_d := INF if best == UnitStore.NONE else from.distance_squared_to(_building_pos(best))
+	for b in level.store.alive_ids():
+		if level.store.get_type(b) != DEPOT or not level.store.is_complete(b):
+			continue
+		var d := from.distance_squared_to(_building_pos(b))
+		if d < best_d:
+			best = b
+			best_d = d
+	return best
 
 
 func _dropoff(id: int) -> void:
@@ -609,19 +651,13 @@ func _on_building_removed(b: int, _type: String, _cell: Vector2i) -> void:
 				# or, for the first miner, back to its old home by the base.
 				if store.state[id] == UnitStore.State.STATIONED or store.state[id] == UnitStore.State.WAITING:
 					store.state[id] = UnitStore.State.IDLE
-				var refuge := _base_id()
-				if id == _commuter and b != _commuter_house and level.store.is_alive(_commuter_house):
-					store.home[id] = _commuter_house
-					refuge = _commuter_house
-				var cells := _cells_to(_cell_of(id), refuge)
+				var cells := _cells_to(_cell_of(id), _base_id())
 				if not cells.is_empty():
 					_walk_cells(id, cells, UnitStore.Task.FLEE)
 			else:
 				store.state[id] = UnitStore.State.IDLE
 				store.think_at[id] = tick
 			changed.emit(store.kind[id])
-	if b == _commuter_house:
-		_commuter_house = UnitStore.NONE   # the first miner now just waits in the base
 	_progress.erase(b)
 	if _house_mine.has(b):
 		_mine_house.erase(_house_mine[b])
@@ -678,11 +714,8 @@ func get_save_data() -> Dictionary:
 			mine_cell = level.store.get_cell(m)
 		dropped.append({"kind": ResourceKind.key_of(drops.kind[d]), "pos": drops.pos[d],
 			"mine": mine_cell})
-	var commuter_house = null
-	if level.store.is_alive(_commuter_house):
-		commuter_house = level.store.get_cell(_commuter_house)
 	return {"units": units, "houses": houses, "drops": dropped, "progress": progress,
-		"commuter_house": commuter_house}
+		"first_house_done": _first_house_done}
 
 
 ## Call after the level has loaded. Returns false if the save names a unit
@@ -699,10 +732,7 @@ func load_save_data(data: Dictionary) -> bool:
 		var m := level.grid.get_occupant(entry["mine"])
 		if level.store.is_alive(m):
 			_progress[m] = float(entry["work"])
-	if data.get("commuter_house") != null:
-		_commuter_house = level.grid.get_occupant(data["commuter_house"])
-		if not level.store.is_alive(_commuter_house):
-			_commuter_house = UnitStore.NONE
+	_first_house_done = bool(data.get("first_house_done", not _house_mine.is_empty()))
 	for entry in data.get("drops", []):
 		var rkind := ResourceKind.id_from_key(entry["kind"])
 		if rkind == -1:
@@ -739,9 +769,7 @@ func load_save_data(data: Dictionary) -> bool:
 		if int(entry["carry"]) > 0:
 			store.carry[id] = int(entry["carry"])
 			store.carry_kind[id] = ResourceKind.id_from_key(entry["carry_kind"])
-			var cells := _cells_to(_cell_of(id), _base_id())
-			if not cells.is_empty():
-				_walk_cells(id, cells, UnitStore.Task.TO_DROPOFF)
+			_deliver(id)
 	for kind in WorkerRoster.Kind.COUNT:
 		changed.emit(kind)
 	return true
@@ -807,7 +835,9 @@ func _is_available(id: int) -> bool:
 	if store.state[id] != UnitStore.State.IDLE and not (
 			store.state[id] == UnitStore.State.WALKING and store.task[id] == UnitStore.Task.GO_HOME):
 		return false
-	return store.kind[id] != WorkerRoster.Kind.MINER or store.home[id] == UnitStore.NONE
+	# Miners: waiting in the base, not yet sent. The first miner is picked
+	# separately (see send_miner), so it is not counted here.
+	return store.kind[id] != WorkerRoster.Kind.MINER or (store.home[id] == UnitStore.NONE and id != _commuter)
 
 
 func _nearest_available(kind: int, near: Vector2) -> int:

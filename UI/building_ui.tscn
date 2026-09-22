@@ -4,15 +4,13 @@
 
 [node name="BuildingUI" type="CanvasLayer" unique_id=1850759088]
 
-[node name="BuildingUI" type="VBoxContainer" parent="." unique_id=47586603]
+[node name="BuildingUI" type="HBoxContainer" parent="." unique_id=47586603]
 anchors_preset = 4
 anchor_top = 0.5
 anchor_bottom = 0.5
+offset_left = 8.0
 offset_top = -20.0
-offset_right = 40.0
+offset_right = 48.0
 offset_bottom = 20.0
 grow_vertical = 2
 script = ExtResource("1_1wrbn")
-
-[node name="Panel" type="Panel" parent="BuildingUI" unique_id=346214315]
-layout_mode = 2

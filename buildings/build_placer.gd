@@ -3,6 +3,8 @@ extends Node2D
 ## Placement mode: shows a see-through preview of a building under the mouse,
 ## green where it can go and red where it can't. "left_click" places it,
 ## "cancel_placement" cancels (unless disabled, like for the first base).
+## Crafted buildings are placed as construction sites for builders to finish;
+## the base is placed complete.
 
 signal placement_finished(type: String, cell: Vector2i)
 signal placement_cancelled
@@ -13,6 +15,7 @@ signal placement_cancelled
 
 var _type := ""
 var _cancellable := true
+var _construct := false
 var _cell := Vector2i.ZERO
 var _ghost := Sprite2D.new()
 
@@ -24,13 +27,14 @@ func _ready() -> void:
 	set_process(false)
 
 
-func start(type: String, cancellable := true) -> void:
+func start(type: String, cancellable := true, construct := false) -> void:
 	var data := level.get_building_data(type)
 	if data == null:
 		push_error("BuildPlacer: no BuildingData with id '%s'." % type)
 		return
 	_type = type
 	_cancellable = cancellable
+	_construct = construct
 	_ghost.texture = data.get_texture()
 	_ghost.show()
 	set_process(true)
@@ -60,7 +64,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("left_click"):
 		var type := _type
 		var cell := _cell
-		if level.place_building(type, cell):
+		var placed := level.place_construction(type, cell) != BuildingStore.NONE \
+			if _construct else level.place_building(type, cell)
+		if placed:
 			stop()
 			placement_finished.emit(type, cell)
 		get_viewport().set_input_as_handled()

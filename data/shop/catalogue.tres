@@ -7,7 +7,11 @@
 [ext_resource type="Resource" path="res://data/shop/carrier.tres" id="4_k3djh"]
 [ext_resource type="Resource" path="res://data/shop/pickaxe.tres" id="5_bexau"]
 [ext_resource type="Script" path="res://economy/shop_catalogue.gd" id="6_kpakn"]
+[ext_resource type="Resource" path="res://data/shop/craft_builder_house.tres" id="7_cbh"]
+[ext_resource type="Resource" path="res://data/shop/craft_carrier_house.tres" id="8_cch"]
+[ext_resource type="Resource" path="res://data/shop/craft_depot.tres" id="9_cdp"]
+[ext_resource type="Resource" path="res://data/shop/craft_miner_house.tres" id="10_cmh"]
 
 [resource]
 script = ExtResource("6_kpakn")
-items = Array[ExtResource("1_fe8ij")]([ExtResource("2_k3djh"), ExtResource("3_coi0a"), ExtResource("4_k3djh"), ExtResource("4_1u4h4"), ExtResource("5_bexau")])
+items = Array[ExtResource("1_fe8ij")]([ExtResource("2_k3djh"), ExtResource("3_coi0a"), ExtResource("4_k3djh"), ExtResource("4_1u4h4"), ExtResource("5_bexau"), ExtResource("7_cbh"), ExtResource("8_cch"), ExtResource("10_cmh"), ExtResource("9_cdp")])

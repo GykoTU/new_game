@@ -1,6 +1,7 @@
 extends GridContainer
-## The shop's item grid, built from the catalogue. One slot per item, in
-## catalogue order: icon, name, level, price.
+## The shop's item grid, built from the catalogue. One slot per item of the
+## current section (Buy or Craft), in catalogue order: icon, name, level, price.
+## Items whose blueprint the run does not know are hidden.
 ##
 ## A slot is greyed out when the item is unaffordable or maxed. A resource the
 ## player is short of is shown in red. When a sale applies, the original price
@@ -16,6 +17,7 @@ const STRUCK_COLOR := Color(0.55, 0.55, 0.55)
 @export var spacing := 6
 
 var _shop: Shop
+var section: ShopItemData.Section = ShopItemData.Section.BUY
 var _economy: Economy
 ## One entry per item: {item, button, level, price, badge}
 var _slots: Array[Dictionary] = []
@@ -34,15 +36,30 @@ func bind(shop: Shop, economy: Economy, modifiers: ModifierSet) -> void:
 	economy.changed.connect(func(_k, _a): refresh())
 	modifiers.changed.connect(refresh)
 	shop.purchased.connect(func(_item, _n): refresh())
+	if shop.unlocks != null:
+		shop.unlocks.changed.connect(_rebuild)
+	refresh()
+
+
+func set_section(value: ShopItemData.Section) -> void:
+	section = value
+	_rebuild()
+
+
+func _rebuild() -> void:
+	if _shop == null:
+		return
+	_build()
 	refresh()
 
 
 func _build() -> void:
 	for child in get_children():
+		remove_child(child)   # now, so the grid lays out only the new slots
 		child.queue_free()
 	_slots.clear()
 	for item in _shop.items():
-		if item == null:
+		if item == null or item.section != section or not _shop.is_known(item):
 			continue
 		var button := Button.new()
 		button.custom_minimum_size = slot_size
@@ -110,6 +127,8 @@ func refresh() -> void:
 		var level: Label = slot["level"]
 		if item.kind == ShopItemData.Kind.WORKER:
 			level.text = "Bought %d" % n
+		elif item.kind == ShopItemData.Kind.BUILDING:
+			level.text = "Crafted %d" % n
 		elif item.max_level > 0:
 			level.text = "Lv %d / %d" % [n, item.max_level]
 		else:

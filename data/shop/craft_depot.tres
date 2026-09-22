@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = "craft_depot"
+display_name = "Depot"
+description = "Carriers drop resources here if it is closer than the base."
+icon_path = "res://assets/buildings/depot.png"
+kind = 2
+section = 1
+blueprint = "blueprint:depot"
+tags = PackedStringArray("depot")
+base_cost = Dictionary[int, int]({
+5: 15
+})
+building_id = "depot"

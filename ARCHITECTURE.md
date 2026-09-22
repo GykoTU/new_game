@@ -379,10 +379,9 @@ fire cheap later.
 | `UnitRenderer` | `units/unit_renderer.gd` | One `MultiMeshInstance2D` per (kind, animation), plus one per resource for drops (under the units). Drawn once per frame, after the simulation. |
 
 **How it plays.**
-- **Run start.** Placing the base places a finished builder house, carrier
-  house and miner home (`worker_house`) on free tiles near the base, each with
-  one worker inside. The miner is the **commuter** (`_commuter`,
-  `_commuter_house`).
+- **Run start.** Placing the base places a finished builder house and carrier
+  house near it, with a builder and a carrier inside, plus one miner with no
+  house, waiting in the base: the **commuter** (`_commuter`).
 - **Only busy units are drawn.** `UnitStore.inside` is 1 while a unit is in a
   building: new units spawn inside; `walk()` brings them out; arriving home
   (`GO_HOME`, `FLEE`), or standing beside home with nothing to do, puts them
@@ -394,13 +393,15 @@ fire cheap later.
   the reason ("Needs a free bed…").
 - **Sending miners.** Click the miner slot in the worker bar, then a mine.
   Shift keeps the mode open to send more; the cancel key or any refusal ends
-  it, with the reason shown in a toast. `send_miner` prefers an idle *bought*
-  miner: it moves into the mine's home, and a mine with no home gets one as a
-  construction site, paid for right then from `BuildingData.cost` (refused if
-  unaffordable). With no bought miner idle, the commuter goes: into the
-  mine's home if a bed is free (for good), otherwise it walks there (`TO_MINE`)
-  and mines outside (`MINING`: visible, exposed, free). If its mine home falls,
-  it returns to its house by the base and is a commuter again.
+  it, with the reason shown in a toast. A mine whose miner house has a free
+  bed takes the nearest idle bought miner (or, with none idle, the commuter).
+  A mine without one can only be worked by the commuter, who walks there
+  (`TO_MINE`) and mines outside (`MINING`: visible, exposed); bought miners are
+  refused with "Build a miner house next to this mine first." The first miner
+  house to be built pulls the commuter in, wherever it is. If its house falls,
+  it flees to the base and commutes again. A house placed on the tile a miner
+  stands on still takes it in: `cells_to_building` returns `[from]` for a unit
+  already inside the footprint.
 - **Construction.** A site is a real building with `progress < 1`, drawn faded
   (`CONSTRUCTION_ALPHA`) until `construction.png` exists. Builders add work;
   more builders build faster. Miners wait beside the site, then move in.
@@ -444,9 +445,9 @@ Both learned from bugs; neither shows on screen until it breaks.
 
 - **Save references as cells, never as ids.** Building and unit ids are handed
   out again when a run loads, so a saved id points at the wrong thing. A
-  unit's home, a house's mine, a drop's mine, each mine's progress, the
-  commuter's house and the mine it works are all saved by cell and looked up
-  again after the level loads. Claims and trips are not saved:
+  unit's home, a house's mine, a drop's mine, each mine's progress and the
+  mine the commuter works are all saved by cell and looked up again after the
+  level loads. Claims and trips are not saved:
   units decide again after loading. This is also why units load *after* the
   level.
 - **No lambdas on signals inside `RefCounted` classes.** A lambda keeps a strong
@@ -679,8 +680,11 @@ because asking about an erased action is an error, not a false. Exports made
 with Godot's *debug* template still count as debug builds. Tested by
 `Keybinds.simulate_release`, a test-only switch.
 
-Dev shortcuts today: **Ctrl+N** new run, **Ctrl+G** grant resources, **F3**
-stat overlay (every modifier source and every resolved stat, live).
+Dev shortcuts today: **Ctrl+N** new run, **Ctrl+G** grant resources (hold it
+to keep granting: after 0.35 s, 10 times a second, in wall time so it works
+while paused; each grant in one hold is 1.25x the last, capped at 1e9 per
+grant, for stress tests), **F3** stat overlay (every modifier source and every resolved
+stat, live).
 
 ### UI and input: rules that are easy to break
 
@@ -714,23 +718,50 @@ the editor has imported it once. Debug builds print the list of missing
 sprites at startup. Nothing ever writes into `assets/`: the artist names the
 files, code references them by path.
 
-### Planned: Stages 2b-3b
+### Wood, crafting and the building bar (implemented, Stage 2b)
 
-How the decisions in `docs/DESIGN.md` will be built. Written before the code so
-the seams are agreed; each part moves to "implemented" when it lands.
+**Diagram: [`docs/crafting-flow.svg`](docs/crafting-flow.svg)** — from a
+marked tree to a placed, built building, and the timers in between.
 
-**Timed world events (2b).** Stump decay and tree regrowth are scheduled in
-simulation ticks on a small scheduler ordered by due tick. Scheduled events
-are saved with the run, and regrowth positions come from a run RNG whose
-state is also saved — so a loaded run regrows exactly the trees it would have.
+| Piece | File | Job |
+|---|---|---|
+| `Forest` | `Level/forest.gd` | Marked trees, chop progress, stumps rotting, trees regrowing. |
+| `TimedEvents` | `game/timed_events.gd` | Events due at a later tick (kind + cell), saved with the run. |
+| `Unlocks` | `economy/unlocks.gd` | The run's known ids (`"blueprint:depot"`); starts with the four starter blueprints. |
+| `BuildingInventory` | `buildings/building_inventory.gd` | Crafted buildings by type, in first-crafted order. |
+| building bar | `UI/building_ui.gd` | One slot per type with a count. A column of 5 slots is always shown (the frame image at 3x, the building at 2x on top). Hover + hold `expand_building_bar` (Shift) opens further columns to the right, partly transparent. |
 
-**Crafting and unlocks (2b).** `ShopItemData` gains a section (Buy or Craft),
-two new kinds (BUILDING, into the owned-buildings inventory; ITEM, into an
-item inventory) and an optional blueprint requirement. The run keeps one saved
-set of unlock ids — `"blueprint:depot"`, `"item:water_bucket"` — which is
-where points of interest and enemies will add blueprints later. "Buy costs
-only gold, Craft costs no gold" is a data rule, checked by a test over the
-catalogue rather than enforced in code.
+- **Trees and wood.** `WOOD` is appended to `ResourceKind` (D8). Plain trees
+  (`tree`) generate on grass, fruit trees on flowers. Clicking a plain tree
+  toggles its mark (`main._tree_click`, shown as a red tint until a mark
+  sprite exists). JobBoard CHOP lists marked trees; a builder working one adds
+  `BUILD_SPEED` per second to its chop progress, and at `chop_work` (4) the
+  tree becomes a stump and `wood_per_tree` (3) wood drops bounce out.
+  Carriers fetch them like mined resources. Unmarking mid-chop stops the
+  builder; progress is kept.
+- **Timers.** A stump schedules its own removal (`stump_seconds`, 60). A
+  repeating regrow event (`regrow_seconds`, 45) grows one tree on a random
+  free grass tile with nothing around it, while there are fewer trees than
+  the map started with. Everything is in ticks and saved; regrowth spots come
+  from the Forest's RNG, whose seed and state are saved too.
+- **Buy and Craft.** `ShopItemData` gains `section` (BUY / CRAFT), the kind
+  `BUILDING` (appended) with `building_id`, and `blueprint` (an unlock id;
+  empty = always known). The shop hides unknown items and refuses them
+  ("Needs a blueprint"). "Buy costs only gold, Craft costs no gold" is a data
+  rule, checked by a test over the catalogue. An `ITEM` kind (bucket) is
+  appended in 2c.
+- **Placing.** Crafting adds one to the inventory. Clicking a bar slot starts
+  `BuildPlacer` in construction mode (cancellable); a successful placement
+  takes one from the inventory, and builders build the site. Houses add beds
+  once complete.
+- **Depots.** A carrier delivers to whichever is nearer in a straight line:
+  the base or a finished depot (falling back to the base if the depot can't be
+  reached). Resources count when they arrive.
+- **Miner houses** (`worker_house`) are crafted and placed like any building.
+  `BuildingData.must_touch_prefix = "mine_"` with `one_per_touched` makes
+  `can_place` require a mine that no other miner house touches; placing one
+  links it to that mine (`UnitSystem._on_building_placed`).
+
 
 **Terrain changes at runtime (2c).** Cobble is a `Ground` type appended per D8.
 Turning lava into cobble is `set_ground_at`, a redraw of that one tile, and a

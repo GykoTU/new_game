@@ -36,6 +36,14 @@ const UNIT_TYPES := {
 @export var shop_catalogue: ShopCatalogue = preload("res://data/shop/catalogue.tres")
 ## Debug builds only: how much of every resource the grant shortcut adds.
 @export var debug_grant_amount := 100
+## Debug builds only: holding the grant shortcut repeats it after this delay,
+## this many times per second.
+@export var debug_grant_repeat_delay := 0.35
+@export var debug_grant_repeats_per_second := 10.0
+## Debug builds only: while held, each grant is this many times the previous
+## one (for stress tests), up to debug_grant_max per grant.
+@export var debug_grant_growth := 1.25
+@export var debug_grant_max := 1_000_000_000
 
 @onready var clock: GameClock = $GameClock
 @onready var level: LevelGenerator = $Level
@@ -47,6 +55,7 @@ const UNIT_TYPES := {
 @onready var stat_overlay: CanvasLayer = $UI/StatOverlay
 @onready var toast: CanvasLayer = $UI/Toast
 @onready var unit_renderer: UnitRenderer = $UnitRenderer
+@onready var building_ui = $UI/BuildingUI/BuildingUI
 
 ## Every active stat modifier in this run: augments, upgrades, buffs, sales.
 var modifiers := ModifierSet.new()
@@ -54,10 +63,20 @@ var economy := Economy.new()
 var roster := WorkerRoster.new()
 var shop: Shop
 var units := UnitSystem.new()
+## Blueprints (and later items) this run knows.
+var unlocks := Unlocks.new()
+## Crafted buildings waiting in the building bar.
+var inventory := BuildingInventory.new()
+## Marked trees, stumps and regrowth.
+var forest := Forest.new()
 ## UNIT_TYPES name -> StatBlock
 var type_blocks := {}
 ## True while the player is choosing a mine to send a miner to.
 var _dispatching := false
+## Seconds the grant shortcut has been held, and grants given in this hold
+## (debug builds only).
+var _grant_held := 0.0
+var _grants_this_hold := 0
 
 
 func _ready() -> void:
@@ -69,7 +88,11 @@ func _ready() -> void:
 	# build its pathing grid.
 	units.setup(level, economy, modifiers, type_blocks)
 	roster.attach(units)
+	forest.setup(level)
+	units.forest = forest
 	shop.purchase_check = _purchase_check
+	shop.unlocks = unlocks
+	shop.inventory = inventory
 
 	EventBus.on_quit_button_pressed.connect(save_run)
 	economy.changed.connect(func(kind, amount): EventBus.resource_changed.emit(kind, amount))
@@ -77,12 +100,15 @@ func _ready() -> void:
 	shop.purchased.connect(func(item, n): EventBus.shop_purchased.emit(item.id, n))
 	level.level_generated.connect(_on_level_generated)
 	build_placer.placement_finished.connect(_on_placement_finished)
+	build_placer.placement_cancelled.connect(toast.hide_message)
 	options_menu.visibility_changed.connect(_on_options_visibility_changed)
 
 	resource_bar.bind(economy)
 	shop_ui.bind(shop, economy, modifiers)
 	worker_ui.bind(units)
 	worker_ui.slot_pressed.connect(_on_worker_slot_pressed)
+	building_ui.bind(inventory, level)
+	building_ui.slot_pressed.connect(_on_building_slot_pressed)
 	stat_overlay.bind(self)
 
 	# The level does not generate itself on _ready: children are readied before
@@ -104,27 +130,34 @@ func _process(delta: float) -> void:
 	# Drawn once per frame, after the simulation, never from inside it.
 	unit_renderer.draw_units(units.store, clock.tick_count)
 	unit_renderer.draw_drops(units.drops, clock.tick_count)
+	_debug_repeat(delta)
 
 
 ## The single place simulation order is decided. Every system that advances the
 ## world is stepped from here, in this order, with a fixed dt.
-##   1. units -- move, decide, build, gather, haul (UnitSystem.step)
+##   1. units -- move, decide, build, chop, gather, haul (UnitSystem.step)
+##   2. forest -- stumps rot, trees regrow (Forest.step)
 ## Systems land here as they are built, in the order they must run.
 func _simulate(dt: float) -> void:
 	units.tick = clock.tick_count
 	units.step(dt)
+	forest.step(clock.tick_count)
 
 
 # --- Run lifecycle ------------------------------------------------------------
 
 func _start_new_run() -> void:
 	_end_dispatch()
+	build_placer.stop()
 	units.clear()
 	modifiers.clear()
 	shop.reset()
 	roster.clear()
+	unlocks.reset()
+	inventory.clear()
 	economy.set_all(starting_resources)
 	level.generate()
+	forest.start_new(clock.tick_count, level.used_seed)
 	_count_run_started()
 	# New game: the player picks where the base goes. It can't be cancelled.
 	build_placer.start("base", false)
@@ -148,6 +181,8 @@ func _load_run(save: Dictionary) -> bool:
 		return false
 	if save.has("shop") and not shop.load_save_data(save["shop"]):
 		return false
+	unlocks.load_save_data(save.get("unlocks", {}))
+	inventory.load_save_data(save.get("inventory", {}))
 	if not modifiers.load_save_data(save.get("modifiers", {}), _resolve_modifier_source):
 		return false
 	if not level.load_save_data(save["level"]):
@@ -155,6 +190,7 @@ func _load_run(save: Dictionary) -> bool:
 	# After the level: units refer to buildings by cell.
 	if not units.load_save_data(save.get("units", {})):
 		return false
+	forest.load_save_data(save.get("forest", {}))
 	if save.has("clock"):
 		clock.load_save_data(save["clock"])
 	return true
@@ -171,6 +207,9 @@ func save_run() -> void:
 		"shop": shop.get_save_data(),
 		"modifiers": modifiers.get_save_data(),
 		"units": units.get_save_data(),
+		"unlocks": unlocks.get_save_data(),
+		"inventory": inventory.get_save_data(),
+		"forest": forest.get_save_data(),
 		# progression and the day/night director join this as they are built.
 		# SaveManager neither knows nor cares what these keys mean.
 	})
@@ -202,6 +241,7 @@ func _referenced_art() -> Array:
 		if item != null:
 			paths.append(item.icon_path)
 	paths.append("res://assets/ui/sale_tag.png")
+	paths.append(building_ui.SLOT_TEXTURE)
 	for data in level.placeable_buildings:
 		if data != null and data.texture == null:
 			paths.append(data.texture_path)
@@ -211,14 +251,16 @@ func _referenced_art() -> Array:
 	return paths
 
 
-## Rules the shop checks beyond price. Workers need a base to arrive at, and
-## builders and carriers need a free bed.
+## Rules the shop checks beyond price. Workers need a base to arrive at and a
+## free bed in a finished house of their kind (miner houses for miners).
 func _purchase_check(item: ShopItemData) -> String:
-	if item.kind != ShopItemData.Kind.WORKER:
+	if item.kind == ShopItemData.Kind.UPGRADE:
 		return ""
 	if level.base_cell == LevelGenerator.INVALID_CELL:
 		return "Place your base first."
-	if item.worker_kind != WorkerRoster.Kind.MINER and units.free_beds(item.worker_kind) <= 0:
+	if item.kind != ShopItemData.Kind.WORKER:
+		return ""
+	if units.free_beds(item.worker_kind) <= 0:
 		return "Needs a free bed: craft another %s house." % WorkerRoster.display_of(item.worker_kind).to_lower()
 	return ""
 
@@ -273,6 +315,36 @@ func _on_level_generated() -> void:
 func _on_placement_finished(type: String, _cell: Vector2i) -> void:
 	if type == "base":
 		units.start_run_kit()
+	else:
+		inventory.take(type)   # placed from the building bar
+		toast.hide_message()
+
+
+func _on_building_slot_pressed(type: String) -> void:
+	if level.base_cell == LevelGenerator.INVALID_CELL or build_placer.is_active():
+		return
+	_end_dispatch()
+	build_placer.start(type, true, true)
+	var where := "next to a mine without one" if type == UnitSystem.WORKER_HOUSE else ""
+	toast.show_message("Click to place%s.  %s: cancel." % [(" " + where) if where != "" else "",
+		Keybinds.describe_action("cancel_placement")], 4.0)
+
+
+## Left click on a plain tree marks it for chopping (or unmarks it). Builders
+## chop marked trees when they have nothing more urgent to do.
+func _tree_click() -> bool:
+	var cell := level.world_to_cell(get_global_mouse_position())
+	if not level.grid.in_bounds(cell):
+		return false
+	var id := level.grid.get_occupant(cell)
+	if forest.is_tree(id):
+		var marked := forest.toggle_mark(id)
+		toast.show_message("Marked for chopping." if marked else "No longer marked.", 1.5)
+		return true
+	if level.store.is_alive(id) and level.store.get_type(id) == "tree_fruit":
+		toast.show_message("Fruit trees are kept for their fruit.", 1.5)
+		return true
+	return false
 
 
 ## The options menu freezes the world through the clock rather than through
@@ -300,6 +372,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
+	if event.is_action_pressed("left_click") and not build_placer.is_active() and _tree_click():
+		get_viewport().set_input_as_handled()
+		return
+
 	if event.is_action_pressed("game_pause"):
 		clock.toggle_player_pause()
 		get_viewport().set_input_as_handled()
@@ -324,10 +400,40 @@ func _debug_input(event: InputEvent) -> void:
 		_start_new_run()
 		print("Debug: new run started, place your base")
 	elif event.is_action_pressed("debug_grant_resources"):
-		for kind in ResourceKind.count():
-			economy.add(kind, debug_grant_amount)
+		_debug_grant()   # once on press; holding repeats it (_debug_repeat)
 	elif event.is_action_pressed("debug_stat_overlay"):
 		stat_overlay.toggle()
 	else:
 		return
 	get_viewport().set_input_as_handled()
+
+
+## Each grant in one hold is bigger than the last: 100, 125, 156, ... so a few
+## seconds of holding reaches millions.
+func _debug_grant() -> void:
+	var amount := mini(int(round(debug_grant_amount * pow(debug_grant_growth, _grants_this_hold))),
+		debug_grant_max)
+	_grants_this_hold += 1
+	for kind in ResourceKind.count():
+		economy.add(kind, amount)
+
+
+## Holding the grant shortcut keeps granting: after a short delay, several
+## times a second. Wall time on purpose: it must work while the game is paused.
+func _debug_repeat(delta: float) -> void:
+	if not Keybinds.dev_tools_enabled() or not Input.is_action_pressed("debug_grant_resources"):
+		_grant_held = 0.0
+		_grants_this_hold = 0
+		return
+	var before := _grant_held
+	_grant_held += delta
+	var interval := 1.0 / maxf(debug_grant_repeats_per_second, 0.1)
+	var start := debug_grant_repeat_delay
+	# Grants for every repeat boundary crossed this frame (a slow frame can cross several).
+	var n := 0
+	if _grant_held >= start:
+		n = int(floor((_grant_held - start) / interval)) + 1
+		if before >= start:
+			n -= int(floor((before - start) / interval)) + 1
+	for i in n:
+		_debug_grant()

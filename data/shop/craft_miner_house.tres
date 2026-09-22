@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = "craft_miner_house"
+display_name = "Miner House"
+description = "A home for 3 miners at one mine. Place it next to a mine that has none; a builder builds it."
+icon_path = "res://assets/buildings/worker_house.png"
+kind = 2
+section = 1
+blueprint = "blueprint:miner_house"
+tags = PackedStringArray("worker_house")
+base_cost = Dictionary[int, int]({
+5: 5
+})
+building_id = "worker_house"

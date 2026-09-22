@@ -56,12 +56,17 @@ func cells_between(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 
 ## Cells from `from` to the nearest tile touching a building, stopping BEFORE
 ## the building itself. Empty if the building cannot be reached. A unit already
-## standing next to it gets a one-cell path: [from].
+## standing next to it, or on it, gets a one-cell path: [from].
 func cells_to_building(from: Vector2i, origin: Vector2i, size: Vector2i) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
 	if not astar.is_in_boundsv(from) or not astar.is_in_boundsv(origin):
 		return out
 	var footprint := Rect2i(origin, size)
+	if footprint.has_point(from):
+		# Standing on it already: the building was placed on this unit's tile
+		# (e.g. a miner house on the spot where the miner was working).
+		out.append(from)
+		return out
 	# Open the footprint so A* can aim at it, then cut the path where it enters.
 	var opened: Array[Vector2i] = []
 	for y in size.y:

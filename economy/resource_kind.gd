@@ -14,6 +14,7 @@ enum Id {
 	COPPER,
 	DIAMOND,
 	FRUIT,
+	WOOD,
 	COUNT,
 }
 
@@ -24,6 +25,7 @@ const _TABLE := [
 	[Id.COPPER,  "copper",  "Copper",  "res://assets/ui/copper.png",    "mine_copper"],
 	[Id.DIAMOND, "diamond", "Diamond", "res://assets/ui/diamond.png",   "mine_diamond"],
 	[Id.FRUIT,   "fruit",   "Fruit",   "res://assets/ui/fruit.png",     "tree_fruit"],
+	[Id.WOOD,    "wood",    "Wood",    "res://assets/ui/wood.png",      "tree"],
 ]
 
 static var _keys := PackedStringArray()

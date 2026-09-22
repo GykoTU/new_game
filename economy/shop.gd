@@ -22,6 +22,10 @@ var purchase_check: Callable
 
 var _economy: Economy
 var _roster: WorkerRoster
+## Blueprints known this run. Null = everything is known (tests, tools).
+var unlocks: Unlocks
+## Where crafted buildings go. Required for BUILDING items.
+var inventory: BuildingInventory
 var _modifiers: ModifierSet
 var _price_blocks := {}      # item id -> StatBlock
 var _purchases := {}         # item id -> int
@@ -77,11 +81,21 @@ func is_discounted(item: ShopItemData) -> bool:
 ## Why this item cannot be bought right now, apart from price; "" if it can.
 ## Price is left out on purpose: the shop shows that as red numbers already.
 func block_reason(item: ShopItemData) -> String:
+	if not is_known(item):
+		return "Needs a blueprint"
+	if item.kind == ShopItemData.Kind.BUILDING and inventory == null:
+		return "Nowhere to keep buildings"
 	if is_maxed(item):
 		return "Max level"
 	if purchase_check.is_valid():
 		return purchase_check.call(item)
 	return ""
+
+
+## True if the run knows this item's blueprint (or it needs none). The Craft
+## tab hides items that are not known.
+func is_known(item: ShopItemData) -> bool:
+	return unlocks == null or unlocks.has(item.blueprint)
 
 
 func can_buy(item: ShopItemData) -> bool:
@@ -103,6 +117,8 @@ func buy(item: ShopItemData) -> bool:
 		ShopItemData.Kind.UPGRADE:
 			# Re-adding the source replaces it, so level 3 replaces level 2.
 			_modifiers.add_source(UPGRADE_PREFIX + item.id, item.modifiers_at(n))
+		ShopItemData.Kind.BUILDING:
+			inventory.add(item.building_id)
 	purchased.emit(item, n)
 	return true
 

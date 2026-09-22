@@ -8,6 +8,16 @@ enum Kind {
 	WORKER,
 	## Each purchase raises the level by one; `modifiers` scale with the level.
 	UPGRADE,
+	## Adds one building of `building_id` to the owned-buildings inventory, to
+	## be placed from the building bar. (Appended: kinds are saved as ints.)
+	BUILDING,
+}
+
+## Which tab of the shop it is in. Buy is paid in gold only, Craft in
+## resources only: a data rule, checked by a test over the catalogue.
+enum Section {
+	BUY,
+	CRAFT,
 }
 
 ## Unique, stable id. Used in save files ("upg:<id>"), so renaming it breaks
@@ -19,8 +29,12 @@ enum Kind {
 ## fallback instead of making this file fail to load.
 @export_file("*.png") var icon_path := ""
 @export var kind: Kind = Kind.UPGRADE
-## Extra tags for price targeting. "shop" and the kind ("worker" / "upgrade")
-## are always added, so a sale on ["shop", "upgrade"] needs nothing here.
+@export var section: Section = Section.BUY
+## Unlock id the run must know before this shows in the shop, e.g.
+## "blueprint:depot". Empty = always known.
+@export var blueprint := ""
+## Extra tags for price targeting. "shop" and the kind ("worker" / "upgrade" /
+## "building") are always added, so a sale on ["shop", "upgrade"] needs nothing here.
 @export var tags := PackedStringArray()
 
 @export_group("Price")
@@ -34,6 +48,10 @@ enum Kind {
 @export_group("Worker")
 @export var worker_kind: WorkerRoster.Kind = WorkerRoster.Kind.MINER
 
+@export_group("Building")
+## BuildingData id added to the inventory.
+@export var building_id := ""
+
 @export_group("Upgrade")
 ## The modifiers at level 1. Level N scales them: FLAT and INCREASE by N,
 ## MULTIPLIER to the power N. So "+10% move speed" at level 3 is +30%, and
@@ -43,7 +61,7 @@ enum Kind {
 
 ## Tags used to resolve this item's price.
 func price_tags() -> PackedStringArray:
-	var out := PackedStringArray(["shop", "worker" if kind == Kind.WORKER else "upgrade"])
+	var out := PackedStringArray(["shop", ["worker", "upgrade", "building"][kind]])
 	for t in tags:
 		if not out.has(t):
 			out.append(t)

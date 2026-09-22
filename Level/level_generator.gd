@@ -48,6 +48,8 @@ const BUILDING_FILES := {
 	"mine_copper": "res://assets/buildings/mines/mine_copper.png",
 	"mine_diamond": "res://assets/buildings/mines/mine_diamond.png",
 	"tree_fruit": "res://assets/buildings/plants/tree_fruit.png",
+	"tree": "res://assets/buildings/plants/tree.png",
+	"tree_stump": "res://assets/buildings/plants/tree_stump.png",
 }
 
 ## Environment patches: size range and which mine (if any) belongs in them.
@@ -243,7 +245,44 @@ func can_place(type: String, cell: Vector2i) -> bool:
 				return false
 			if (data.allowed_grounds & (1 << grid.get_ground(c))) == 0:
 				return false
+	if data.must_touch_prefix != "":
+		return _touches_free(type, cell, data)
 	return true
+
+
+## True if the footprint at `cell` touches a building whose type starts with
+## data.must_touch_prefix -- and, with one_per_touched, one that no other
+## building of this type touches yet.
+func _touches_free(type: String, cell: Vector2i, data: BuildingData) -> bool:
+	for target in _touching(cell, data.size):
+		if not store.get_type(target).begins_with(data.must_touch_prefix):
+			continue
+		if not data.one_per_touched:
+			return true
+		var taken := false
+		for other in _touching(store.get_cell(target), store.get_size(target)):
+			if store.get_type(other) == type:
+				taken = true
+				break
+		if not taken:
+			return true
+	return false
+
+
+## Ids of the buildings touching a footprint (8 neighbours), each once.
+func _touching(origin: Vector2i, size: Vector2i) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for y in range(origin.y - 1, origin.y + size.y + 1):
+		for x in range(origin.x - 1, origin.x + size.x + 1):
+			var c := Vector2i(x, y)
+			if not grid.in_bounds(c):
+				continue
+			var id := grid.get_occupant(c)
+			if id != WorldGrid.NO_OCCUPANT and store.is_alive(id) and not out.has(id):
+				var inside := c.x >= origin.x and c.y >= origin.y and c.x < origin.x + size.x and c.y < origin.y + size.y
+				if not inside:
+					out.append(id)
+	return out
 
 
 ## Places a player building if allowed. Returns true on success.
@@ -267,6 +306,14 @@ func place_construction(type: String, cell: Vector2i) -> int:
 	if id != BuildingStore.NONE:
 		building_placed.emit(type, cell)
 	return id
+
+
+## Adds a generated 1x1 feature (tree, stump...) on a free tile at runtime.
+## Returns the id, or BuildingStore.NONE if the tile is taken.
+func add_feature(type: String, cell: Vector2i) -> int:
+	if not grid.in_bounds(cell) or grid.is_occupied(cell) or not _building_textures.has(type):
+		return BuildingStore.NONE
+	return _add_building(cell, type)
 
 
 ## Adds builder work to a construction site. Returns true on the call that
@@ -559,7 +606,8 @@ func _surround_water_with_sand() -> void:
 						grid.set_ground(n, Ground.SAND)
 
 
-## Rules 8 and 9: trees are rare on grass, common on flowers.
+## Rules 8 and 9: plain trees are rare on grass (wood, Stage 2b); fruit trees
+## are common on flowers.
 func _place_trees() -> void:
 	for y in map_size.y:
 		for x in map_size.x:
@@ -567,13 +615,12 @@ func _place_trees() -> void:
 			if grid.is_occupied(c):
 				continue
 			var g := grid.get_ground(c)
-			var chance := 0.0
 			if g == Ground.FLOWERS:
-				chance = tree_chance_flowers
+				if _rng.randf() < tree_chance_flowers:
+					_add_building(c, "tree_fruit")
 			elif grid.is_grass(g):
-				chance = tree_chance_grass
-			if chance > 0.0 and _rng.randf() < chance:
-				_add_building(c, "tree_fruit")
+				if _rng.randf() < tree_chance_grass:
+					_add_building(c, "tree")
 
 
 func _draw_ground() -> void:
