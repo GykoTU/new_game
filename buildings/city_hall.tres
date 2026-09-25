@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingData" format=3]
+
+[ext_resource type="Script" path="res://buildings/building_data.gd" id="1_bd"]
+
+[resource]
+script = ExtResource("1_bd")
+id = "city_hall"
+display_name = "City Hall"
+texture_path = "res://assets/buildings/city_hall.png"
+max_health = 300.0
+build_work = 20.0
+tags = PackedStringArray("building", "city_hall")
+unique = true
+allowed_grounds = 655

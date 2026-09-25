@@ -53,6 +53,16 @@ const BUILDING_FILES := {
 	"tree_stump": "res://assets/buildings/plants/tree_stump.png",
 }
 
+## Points of interest (Stage 3b). Loaded through Art, so a sprite that is not
+## drawn yet shows the placeholder instead of stopping the level from loading.
+## PointsOfInterest decides what each one does; the generator only places them.
+const POI_FILES := {
+	"poi_blueprint_cache": "res://assets/buildings/poi/blueprint_cache.png",
+	"poi_relic_cache": "res://assets/buildings/poi/relic_cache.png",
+	"poi_npc_house": "res://assets/buildings/poi/npc_house.png",
+	"poi_fruit_tree": "res://assets/buildings/poi/tree_fruit_special.png",
+}
+
 ## Environment patches: size range and which mine (if any) belongs in them.
 ## Void only exists to hold quartz mines, so it's small and always gets one.
 const ENVIRONMENTS := {
@@ -88,6 +98,25 @@ const INVALID_CELL := Vector2i(-1, -1)
 @export_range(0.0, 1.0) var tree_chance_grass := 0.02
 @export_range(0.0, 1.0) var tree_chance_flowers := 0.3
 
+@export_group("Start clearing")
+## Tiles around the map centre revealed when a run begins. The base has to go
+## inside, because nothing can be placed under fog.
+@export var start_reveal_radius := 10
+## Plain grass kept free of environments around the centre: room for the base.
+@export var start_open_radius := 5
+## Trees guaranteed inside the clearing, since wood is the first thing a run needs.
+@export var start_trees := 6
+
+@export_group("Points of interest")
+## How many of each point of interest to try to place, by type.
+@export var poi_counts: Dictionary[String, int] = {
+	"poi_blueprint_cache": 2, "poi_relic_cache": 3, "poi_npc_house": 1, "poi_fruit_tree": 1,
+}
+## No point of interest closer than this to the map centre: they are found, not given.
+@export var poi_min_distance := 16
+## Minimum tiles between two points of interest.
+@export var poi_spacing := 8
+
 @export_group("Player buildings")
 ## Buildings the player can place. Create these as BuildingData resources.
 @export var placeable_buildings: Array[BuildingData] = []
@@ -103,6 +132,8 @@ var buildings_root: Node2D
 var base_cell := INVALID_CELL
 ## The seed the current map was generated with (saved for reference).
 var used_seed := 0
+## Centre of the start clearing: where the camera opens a new run.
+var start_cell := INVALID_CELL
 
 var _rng := RandomNumberGenerator.new()
 var _source_ids := {}
@@ -122,11 +153,16 @@ func generate() -> void:
 	_rng.seed = used_seed
 	if not _load_assets():
 		return
+	start_cell = _map_centre()
 	_generate_grass()
+	_place_start_ice()
 	_place_environments()
 	_place_mines()
 	_surround_water_with_sand()
 	_place_trees()
+	_ensure_start_trees()
+	_place_points_of_interest()
+	_fog_all_but_start()
 	_draw_ground()
 	grid.notify = true
 	level_generated.emit()
@@ -143,6 +179,9 @@ func get_save_data() -> Dictionary:
 		"map_size": map_size,
 		"ground": grid.ground,
 		"buildings": store.to_save_data(),
+		# Mostly long runs of 0 and 255, so it compresses to almost nothing.
+		"explored": grid.explored.compress(FileAccess.COMPRESSION_DEFLATE),
+		"start_cell": start_cell,
 	}
 
 
@@ -163,6 +202,15 @@ func load_save_data(data: Dictionary) -> bool:
 	used_seed = data["seed"]
 	grid.ground = PackedByteArray(data["ground"])
 	grid.rebuild_derived()
+	start_cell = data.get("start_cell", _map_centre())
+	# A run saved before fog existed has no explored layer. It stays fully
+	# explored (what resize left it as): hiding a map the player has already
+	# seen would take something away rather than add anything.
+	if data.has("explored"):
+		var fog := PackedByteArray(data["explored"]).decompress(grid.tile_count(),
+			FileAccess.COMPRESSION_DEFLATE)
+		if fog.size() == grid.tile_count():
+			grid.explored = fog
 
 	var saved: Dictionary = data["buildings"]
 	var types: PackedStringArray = saved["types"]
@@ -244,6 +292,8 @@ func can_place(type: String, cell: Vector2i) -> bool:
 			var c := cell + Vector2i(x, y)
 			if not grid.in_bounds(c) or grid.is_occupied(c):
 				return false
+			if not grid.is_explored(c):
+				return false   # nothing is placed where the player cannot see
 			if (data.allowed_grounds & (1 << grid.get_ground(c))) == 0:
 				return false
 	if data.must_touch_prefix != "":
@@ -447,6 +497,8 @@ func _load_assets() -> bool:
 			push_error("LevelGenerator: missing building texture " + BUILDING_FILES[type])
 			return false
 		_building_textures[type] = tex
+	for type in POI_FILES:
+		_building_textures[type] = Art.texture(POI_FILES[type])
 
 	return true
 
@@ -510,6 +562,11 @@ func _find_environment_spot(radius: int) -> Vector2i:
 			_rng.randi_range(margin, map_size.y - 1 - margin)
 		)
 		var ok := true
+		# Keep the base's patch of grass open. (The start ice is placed before
+		# this runs and is already in _environments, so it is spaced like any other.)
+		if start_cell != INVALID_CELL and Vector2(c - start_cell).length() \
+				< start_open_radius + radius * 1.35 + grass_gap:
+			ok = false
 		for env in _environments:
 			var min_dist: float = (radius + env["radius"]) * 1.35 + grass_gap + sand_width
 			if Vector2(c - env["center"]).length() < min_dist:
@@ -568,7 +625,7 @@ func _place_mines() -> void:
 		var mine: String = ENVIRONMENTS[type]["mine"]
 		if mine == "":
 			continue
-		if type != Ground.VOID and _rng.randf() > mine_chance:
+		if type != Ground.VOID and not env.get("force_mine", false) and _rng.randf() > mine_chance:
 			continue
 		var cell := _pick_interior_cell(env)
 		_surround(cell, type)
@@ -631,6 +688,96 @@ func _place_trees() -> void:
 			elif grid.is_grass(g):
 				if _rng.randf() < tree_chance_grass:
 					_add_building(c, "tree")
+
+
+## The start clearing always holds a small ice patch with a diamond mine, just
+## inside the revealed radius: diamonds are the one mine reachable from the
+## start, and a run whose clearing had none would stall before it began.
+func _place_start_ice() -> void:
+	var radius := 2
+	var shape_noise := FastNoiseLite.new()
+	shape_noise.seed = _rng.randi()
+	shape_noise.frequency = 0.25
+	# Far enough out to leave the base its open grass, near enough to be seen.
+	var dist := float(start_reveal_radius - radius - 1)
+	for attempt in 16:
+		var angle := _rng.randf() * TAU
+		var centre := start_cell + Vector2i((Vector2.RIGHT.rotated(angle) * dist).round())
+		if not grid.in_bounds(centre - Vector2i(radius + 1, radius + 1)) \
+				or not grid.in_bounds(centre + Vector2i(radius + 1, radius + 1)):
+			continue
+		var cells := _paint_environment(Ground.ICE, centre, radius, shape_noise)
+		if cells.size() < 5:
+			continue
+		_environments.append({"type": Ground.ICE, "center": centre, "radius": radius,
+			"cells": cells, "force_mine": true})
+		return
+
+
+## Tops the clearing up to start_trees plain trees, between the base's open
+## grass and the edge of the revealed area.
+func _ensure_start_trees() -> void:
+	var have := 0
+	var spots: Array = []
+	for y in range(start_cell.y - start_reveal_radius, start_cell.y + start_reveal_radius + 1):
+		for x in range(start_cell.x - start_reveal_radius, start_cell.x + start_reveal_radius + 1):
+			var c := Vector2i(x, y)
+			if not grid.in_bounds(c):
+				continue
+			var d := Vector2(c - start_cell).length()
+			if d > start_reveal_radius - 1:
+				continue
+			var id := grid.get_occupant(c)
+			if id != WorldGrid.NO_OCCUPANT:
+				if store.get_type(id) == "tree":
+					have += 1
+				continue
+			if d >= 3.0 and grid.is_grass(grid.get_ground(c)):
+				spots.append(c)
+	_shuffle(spots)
+	for c in spots:
+		if have >= start_trees:
+			break
+		_add_building(c, "tree")
+		have += 1
+
+
+## Points of interest go on free grass, away from the start and from each other.
+func _place_points_of_interest() -> void:
+	var placed: Array[Vector2i] = []
+	for type in poi_counts:
+		if not POI_FILES.has(type):
+			push_warning("LevelGenerator: unknown point of interest '%s'." % type)
+			continue
+		for n in poi_counts[type]:
+			for attempt in 80:
+				var c := Vector2i(_rng.randi_range(1, map_size.x - 2), _rng.randi_range(1, map_size.y - 2))
+				if grid.is_occupied(c) or not grid.is_grass(grid.get_ground(c)):
+					continue
+				if Vector2(c - start_cell).length() < poi_min_distance:
+					continue
+				var crowded := false
+				for other in placed:
+					if Vector2(c - other).length() < poi_spacing:
+						crowded = true
+						break
+				if crowded:
+					continue
+				_add_building(c, type)
+				placed.append(c)
+				break
+
+
+## The middle tile (rounded down on even sizes, on purpose).
+func _map_centre() -> Vector2i:
+	@warning_ignore("integer_division")
+	return map_size / 2
+
+
+## A new map is dark except the start clearing.
+func _fog_all_but_start() -> void:
+	grid.explored.fill(WorldGrid.UNEXPLORED)
+	grid.reveal_circle(start_cell, start_reveal_radius)
 
 
 func _draw_ground() -> void:

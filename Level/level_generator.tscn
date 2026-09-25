@@ -7,6 +7,9 @@
 [ext_resource type="Resource" path="res://buildings/builder_house.tres" id="5_bhouse"]
 [ext_resource type="Resource" path="res://buildings/carrier_house.tres" id="6_chouse"]
 [ext_resource type="Resource" path="res://buildings/depot.tres" id="7_depot"]
+[ext_resource type="Resource" path="res://buildings/explorer_house.tres" id="8_ehouse"]
+[ext_resource type="Resource" path="res://buildings/watchtower.tres" id="9_wtower"]
+[ext_resource type="Resource" path="res://buildings/city_hall.tres" id="10_chall"]
 
 [node name="level_generator" type="Node2D" unique_id=132605351]
 script = ExtResource("1_ty8jg")
@@ -16,4 +19,4 @@ mine_chance = 1.0
 sand_width = 2
 tree_chance_grass = 0.02
 tree_chance_flowers = 0.078
-placeable_buildings = Array[ExtResource("2_0gvok")]([ExtResource("3_egh7j"), ExtResource("4_whouse"), ExtResource("5_bhouse"), ExtResource("6_chouse"), ExtResource("7_depot")])
+placeable_buildings = Array[ExtResource("2_0gvok")]([ExtResource("3_egh7j"), ExtResource("4_whouse"), ExtResource("5_bhouse"), ExtResource("6_chouse"), ExtResource("7_depot"), ExtResource("8_ehouse"), ExtResource("9_wtower"), ExtResource("10_chall")])

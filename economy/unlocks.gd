@@ -14,6 +14,14 @@ const STARTING := [
 	"blueprint:miner_house",
 	"blueprint:depot",
 	"blueprint:bucket",
+	"blueprint:explorer_house",   # Stage 3b: the explorer must be buyable
+]
+
+## Blueprints a blueprint cache can teach (Stage 3b), in the order they are
+## handed out. A cache opened once all of these are known gives relics instead.
+const FINDABLE := [
+	"blueprint:watchtower",
+	"blueprint:city_hall",
 ]
 
 var _ids := {}
@@ -38,6 +46,14 @@ func add(id: String) -> bool:
 	_ids[id] = true
 	changed.emit()
 	return true
+
+
+## The next findable blueprint this run does not know, or "" if none is left.
+func next_findable() -> String:
+	for id in FINDABLE:
+		if not _ids.has(id):
+			return id
+	return ""
 
 
 func ids() -> PackedStringArray:

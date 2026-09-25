@@ -32,6 +32,11 @@ const UNIT_TYPES := {
 		"base": {Stats.Id.MOVE_SPEED: 64.0, Stats.Id.CARRY_CAPACITY: 10.0},
 		"stats": [Stats.Id.MOVE_SPEED, Stats.Id.CARRY_CAPACITY],
 	},
+	"explorer": {
+		"tags": ["unit", "worker", "explorer"],
+		"base": {Stats.Id.MOVE_SPEED: 70.0},
+		"stats": [Stats.Id.MOVE_SPEED],
+	},
 }
 
 ## What a new run starts with. Tunable in the inspector on the Main node.
@@ -76,6 +81,14 @@ var forest := Forest.new()
 var lava := LavaWorks.new()
 ## The day counter and the day/night cycle.
 var director := RunDirector.new()
+## What the player has seen (Stage 3b).
+var fog := FogOfWar.new()
+## What the explorer finds under the fog.
+var pois := PointsOfInterest.new()
+## Draws the fog. Created in _ready.
+var fog_renderer: FogRenderer
+## Where the explorers are headed (only with its optional sprite). Created in _ready.
+var explore_flags: ExploreFlags
 ## Owned items (the bucket), top left. Created in _ready.
 var item_bar
 ## Day number and phase progress, under the resource bar. Created in _ready.
@@ -90,8 +103,10 @@ var building_glow: BuildingGlow
 var _run_over := false
 ## UNIT_TYPES name -> StatBlock
 var type_blocks := {}
-## True while the player is choosing a mine to send a miner to.
+## True while the player is choosing where to send a worker: a mine for a
+## miner, anywhere for an explorer. `_dispatch_kind` says which.
 var _dispatching := false
+var _dispatch_kind: int = WorkerRoster.Kind.MINER
 ## Seconds the grant shortcut has been held, and grants given in this hold
 ## (debug builds only).
 var _grant_held := 0.0
@@ -114,6 +129,11 @@ func _ready() -> void:
 	units.forest = forest
 	lava.setup(level, unlocks)
 	units.lava = lava
+	fog.setup(level)
+	pois.setup(level, unlocks, fog)
+	units.pois = pois
+	pois.spotted.connect(_on_poi_spotted)
+	pois.opened.connect(_on_poi_opened)
 	var marks := TileMarks.new()
 	marks.name = "LavaMarks"
 	level.add_sibling(marks)   # drawn over the ground, under the units
@@ -143,6 +163,17 @@ func _ready() -> void:
 	# crisp on top of it.
 	move_child(building_glow, unit_renderer.get_index())
 	building_glow.bind(level)
+	# Over everything in the world (z_index 2), under the placer's ghost.
+	fog_renderer = FogRenderer.new()
+	fog_renderer.name = "Fog"
+	add_child(fog_renderer)
+	move_child(fog_renderer, build_placer.get_index())
+	fog_renderer.bind(level, fog)
+	explore_flags = ExploreFlags.new()
+	explore_flags.name = "ExploreFlags"
+	add_child(explore_flags)
+	move_child(explore_flags, build_placer.get_index())
+	explore_flags.bind(units.store, level)
 	director.day_started.connect(_on_day_started)
 	director.phase_changed.connect(_on_phase_changed)
 	level.building_removed.connect(_on_building_removed)
@@ -199,6 +230,8 @@ func _process(delta: float) -> void:
 	var light := director.light_colour()
 	_tint.color = light
 	building_glow.set_night(director.darkness(), light)
+	fog_renderer.refresh()
+	explore_flags.refresh()
 	day_bar.refresh()
 	_debug_repeat(delta)
 
@@ -207,7 +240,8 @@ func _process(delta: float) -> void:
 ## world is stepped from here, in this order, with a fixed dt.
 ##   1. director -- day/night, the day counter (RunDirector.step)
 ##   2. units -- move, decide, build, chop, gather, haul (UnitSystem.step)
-##   3. forest -- stumps rot, trees regrow (Forest.step)
+##   3. fog -- units that walked into a new tile look around (FogOfWar.step_units)
+##   4. forest -- stumps rot, trees regrow (Forest.step)
 ## Systems land here as they are built, in the order they must run. The director
 ## goes first so that a phase change takes effect on the same tick the units
 ## decide what to do with it.
@@ -216,6 +250,7 @@ func _simulate(dt: float) -> void:
 	units.night = director.is_night
 	units.tick = clock.tick_count
 	units.step(dt)
+	fog.step_units(units.store)
 	forest.step(clock.tick_count)
 
 
@@ -238,10 +273,14 @@ func _start_new_run() -> void:
 	lava.clear()
 	economy.set_all(starting_resources)
 	level.generate()
+	pois.clear()
 	forest.start_new(clock.tick_count, level.used_seed)
+	_focus_camera(level.cell_to_world(level.start_cell))
 	_count_run_started()
-	# New game: the player picks where the base goes. It can't be cancelled.
+	# New game: the player picks where the base goes, inside the clearing the
+	# fog leaves open. It can't be cancelled.
 	build_placer.start("base", false)
+	toast.show_message("Place your base in the clearing.", 4.0)
 
 
 ## Order matters. Shop purchases load before modifiers, because rebuilding an
@@ -273,10 +312,13 @@ func _load_run(save: Dictionary) -> bool:
 		return false
 	forest.load_save_data(save.get("forest", {}))
 	lava.load_save_data(save.get("lava", {}))
+	pois.load_save_data(save.get("poi", {}))
 	director.load_save_data(save.get("director", {}))
 	units.night = director.is_night
 	if save.has("clock"):
 		clock.load_save_data(save["clock"])
+	var focus := level.base_cell if level.base_cell != LevelGenerator.INVALID_CELL else level.start_cell
+	_focus_camera(level.cell_to_world(focus))
 	return true
 
 
@@ -285,6 +327,9 @@ func _load_run(save: Dictionary) -> bool:
 func save_run() -> void:
 	if _run_over:
 		return   # the run save was deleted when the base fell; do not write it back
+	# Relics found since the last save go into the profile in the same breath
+	# as the run that no longer holds their caches (see PointsOfInterest).
+	var relics := pois.take_pending_relics()
 	var ok := SaveManager.save_run({
 		"level": level.get_save_data(),
 		"clock": clock.get_save_data(),
@@ -298,11 +343,22 @@ func save_run() -> void:
 		"forest": forest.get_save_data(),
 		"lava": lava.get_save_data(),
 		"director": director.get_save_data(),
+		"poi": pois.get_save_data(),
 		# progression joins this as it is built. SaveManager neither knows nor
 		# cares what these keys mean.
 	})
 	if not ok:
 		push_error("Main: the run could not be saved.")
+		pois.relics_pending += relics   # still the run's; try again next save
+		return
+	_bank_relics(relics)
+
+
+func _bank_relics(n: int) -> void:
+	if n <= 0:
+		return
+	SaveManager.profile["relics"] = int(SaveManager.profile.get("relics", 0)) + n
+	SaveManager.save_profile()
 
 
 ## Rebuilds a modifier source from current game data when a run is loaded, so a
@@ -348,6 +404,7 @@ func _end_run() -> void:
 	profile["runs_ended"] = int(profile.get("runs_ended", 0)) + 1
 	profile["best_day"] = maxi(int(profile.get("best_day", 0)), director.day)
 	profile["total_ticks"] = int(profile.get("total_ticks", 0)) + clock.tick_count
+	profile["relics"] = int(profile.get("relics", 0)) + pois.take_pending_relics()
 	SaveManager.save_profile()
 	run_summary.show_run("Your base has fallen", _summary_rows())
 
@@ -366,6 +423,7 @@ func _summary_rows() -> Array:
 		var amount := economy.amount(kind)
 		if amount > 0:
 			rows.append([ResourceKind.display_of(kind), str(amount)])
+	rows.append(["Relics found", str(pois.relics_found)])
 	rows.append(["Best day so far", str(int(SaveManager.profile.get("best_day", 0)))])
 	return rows
 
@@ -393,6 +451,9 @@ func _referenced_art() -> Array:
 	paths.append(building_ui.SLOT_TEXTURE)
 	paths.append_array(preload("res://UI/item_bar.gd").art_paths())
 	paths.append_array(preload("res://UI/day_bar.gd").art_paths())
+	paths.append_array(LevelGenerator.POI_FILES.values())
+	paths.append("res://assets/ui/relic.png")
+	paths.append(ExploreFlags.FLAG)
 	for data in level.placeable_buildings:
 		if data != null and data.texture == null:
 			paths.append(data.texture_path)
@@ -416,24 +477,33 @@ func _purchase_check(item: ShopItemData) -> String:
 	return ""
 
 
-# --- Sending miners -----------------------------------------------------------
+# --- Sending miners and explorers ---------------------------------------------
 
 func _on_worker_slot_pressed(kind: int) -> void:
-	if kind != WorkerRoster.Kind.MINER:
+	if kind != WorkerRoster.Kind.MINER and kind != WorkerRoster.Kind.EXPLORER:
 		return   # builders and carriers work on their own (assignable tasks: later)
 	if _dispatching:
+		var same := kind == _dispatch_kind
 		_end_dispatch()
-		return
+		if same:
+			return   # a second click on the same slot just closes the mode
 	if level.base_cell == LevelGenerator.INVALID_CELL:
 		toast.show_message("Place your base first.")
 		return
 	if units.count(kind) == 0:
-		toast.show_message("You have no miners. Buy one in the shop.")
+		toast.show_message("You have no %ss. Buy one in the shop." % WorkerRoster.display_of(kind).to_lower())
 		return
+	var stop := Keybinds.describe_action("cancel_placement")
+	if kind == WorkerRoster.Kind.EXPLORER:
+		if director.is_night:
+			toast.show_message("Explorers don't go out at night.")
+			return
+		toast.show_message("Click anywhere to send the explorer, fog too.  %s: stop." % stop, 4.0)
+	else:
+		toast.show_message("Click a mine to send a miner.  Shift: send more.  %s: stop." % stop, 4.0)
 	_dispatching = true
+	_dispatch_kind = kind
 	worker_ui.set_active(kind)
-	toast.show_message("Click a mine to send a miner.  Shift: send more.  %s: stop." \
-		% Keybinds.describe_action("cancel_placement"), 4.0)
 
 
 func _end_dispatch() -> void:
@@ -446,8 +516,13 @@ func _end_dispatch() -> void:
 ## refusal closes it and says why.
 func _dispatch_click(shift: bool) -> void:
 	var cell := level.world_to_cell(get_global_mouse_position())
-	var mine := level.grid.get_occupant(cell) if level.grid.in_bounds(cell) else WorldGrid.NO_OCCUPANT
-	var result := "Click a mine." if mine == WorldGrid.NO_OCCUPANT else units.send_miner(mine)
+	var result := ""
+	if _dispatch_kind == WorkerRoster.Kind.EXPLORER:
+		result = units.send_explorer(cell)
+	else:
+		# A mine under the fog is not there as far as the player knows.
+		var mine := level.grid.get_occupant(cell) if fog.is_explored(cell) else WorldGrid.NO_OCCUPANT
+		result = "Click a mine." if mine == WorldGrid.NO_OCCUPANT else units.send_miner(mine)
 	if result != "":
 		toast.show_message(result)
 		_end_dispatch()
@@ -457,6 +532,24 @@ func _dispatch_click(shift: bool) -> void:
 
 
 # --- Callbacks ----------------------------------------------------------------
+
+## Snaps the camera onto a point (no smoothing across the whole map).
+func _focus_camera(world: Vector2) -> void:
+	var cam: Camera2D = $Camera/Camera2D
+	cam.global_position = world
+	cam.reset_smoothing()
+
+
+func _on_poi_spotted(id: int, type: String) -> void:
+	units.on_poi_spotted(id, type)
+	var what: String = {PointsOfInterest.BLUEPRINT_CACHE: "a blueprint cache",
+		PointsOfInterest.RELIC_CACHE: "a relic cache", PointsOfInterest.NPC_HOUSE: "a house",
+		PointsOfInterest.FRUIT_TREE: "a strange tree"}.get(type, "something")
+	toast.show_message("Spotted %s." % what, 2.5)
+
+
+func _on_poi_opened(_type: String, message: String) -> void:
+	toast.show_message(message, 4.0)
 
 ## Runs after both a new level is generated and a save is loaded.
 func _on_level_generated() -> void:
@@ -498,12 +591,12 @@ func _on_item_pressed(id: String) -> void:
 
 
 func _can_fill_cell(cell: Vector2i) -> bool:
-	return level.grid.in_bounds(cell) and lava.can_fill_at(level.grid.index(cell))
+	return fog.is_explored(cell) and lava.can_fill_at(level.grid.index(cell))
 
 
 ## Lava the bucket can mark, or a tile already marked (so a stroke can unmark).
 func _can_mark_cell(cell: Vector2i) -> bool:
-	if not level.grid.in_bounds(cell):
+	if not fog.is_explored(cell):
 		return false
 	var i := level.grid.index(cell)
 	return lava.is_markable(i) or lava.is_marked(i)
@@ -518,6 +611,8 @@ func _on_tile_picked(cell: Vector2i) -> void:
 ## stroke marks or unmarks, and dragging carries on with the same choice.
 func _on_paint_started(cell: Vector2i) -> void:
 	if not level.grid.in_bounds(cell):
+		return
+	if not fog.is_explored(cell):
 		return
 	var i := level.grid.index(cell)
 	_paint_on = not lava.is_marked(i)
@@ -534,7 +629,7 @@ func _on_paint_moved(cell: Vector2i) -> void:
 	var steps := maxi(absi(cell.x - from.x), absi(cell.y - from.y))
 	for n in range(1, steps + 1):
 		var c := Vector2i((Vector2(from).lerp(Vector2(cell), float(n) / steps)).round())
-		if level.grid.in_bounds(c):
+		if fog.is_explored(c):
 			lava.set_mark(level.grid.index(c), _paint_on)
 	_paint_last = cell
 
@@ -543,7 +638,7 @@ func _on_paint_moved(cell: Vector2i) -> void:
 ## chop marked trees when they have nothing more urgent to do.
 func _tree_click() -> bool:
 	var cell := level.world_to_cell(get_global_mouse_position())
-	if not level.grid.in_bounds(cell):
+	if not fog.is_explored(cell):
 		return false
 	var id := level.grid.get_occupant(cell)
 	if forest.is_tree(id):
@@ -615,6 +710,9 @@ func _debug_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("debug_skip_phase"):
 		director.force_phase_end()
 		print("Debug: skipping to the end of the ", "night" if director.is_night else "day")
+	elif event.is_action_pressed("debug_reveal_map"):
+		fog.reveal_all()
+		print("Debug: map revealed")
 	elif event.is_action_pressed("debug_kill_base"):
 		if level.base_cell != LevelGenerator.INVALID_CELL:
 			level.remove_building(level.base_cell)   # ends the run (_on_building_removed)

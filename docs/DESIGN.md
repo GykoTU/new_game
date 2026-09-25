@@ -151,11 +151,30 @@ Sales work in both sections (a SHOP_PRICE modifier, already built).
 
 ## Exploration (decided)
 
-- **Fog of war**: the map is hidden until explored.
-- An **explorer** NPC is sent out to reveal it.
-- **Points of interest** hide under the fog. They can hold meta currencies,
-  an interactable NPC living in a house, a tree with special fruit, and
-  blueprints.
+- **Fog of war**: the map is hidden until explored. A run starts with a
+  **clearing** around the map centre revealed; it always holds trees and an
+  ice patch with a diamond mine, and the base must be placed inside it.
+  Nothing under the fog can be clicked, marked or built on.
+- Every worker reveals a little as it walks (2 tiles). The **explorer**
+  reveals a lot (6).
+- **Explorer**: bought with gold, lives in an **explorer house** (crafted
+  from wood, 1 bed). Click its slot, then click anywhere, fog included: it
+  walks as close to that spot as it can get, then comes home. It doesn't go
+  out at night; sent out before dusk, it turns back and finishes the trip at
+  dawn.
+- **Points of interest** hide under the fog. When one comes into view the
+  explorer detours to it on its own, spends 3 seconds, and:
+  - a **blueprint cache** teaches the **watchtower**, then the **city hall**;
+    once both are known it holds relics instead;
+  - a **relic cache** holds 1–3 **relics**;
+  - an **NPC living in a house** and a **special fruit tree** are placeholders
+    for now: visited once, they only show a message. *Their effects are open.*
+- **Relics** are the meta currency. They are kept across runs in the profile
+  (spent in Stage 8) and count once the run is saved — at dawn, on quitting,
+  or when the base falls.
+- **Watchtower**: a crafted building that clears the fog far around it (12
+  tiles) once built. **City hall**: found and placeable; its priorities
+  screen comes later.
 
 ---
 

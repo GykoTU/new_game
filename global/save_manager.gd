@@ -101,7 +101,9 @@ func _default_profile() -> Dictionary:
 		"runs_ended": 0,
 		"best_day": 0,
 		"total_ticks": 0,
-		# Meta-currency and unlocks join this in Stage 8. New keys are filled in
+		# Stage 3b: the meta currency, found at points of interest.
+		"relics": 0,
+		# Meta-upgrades join this in Stage 8. New keys are filled in
 		# from these defaults on load, so adding one needs no migration step.
 	}
 

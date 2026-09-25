@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = "craft_watchtower"
+display_name = "Watchtower"
+description = "Clears the fog far around it once it is built."
+icon_path = "res://assets/buildings/watchtower.png"
+kind = 2
+section = 1
+blueprint = "blueprint:watchtower"
+tags = PackedStringArray("watchtower")
+base_cost = Dictionary[int, int]({
+5: 20
+})
+building_id = "watchtower"

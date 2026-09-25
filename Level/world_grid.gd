@@ -26,6 +26,10 @@ const BLOCKS_UNIT := 1 << 0
 const BLOCKS_PROJECTILE := 1 << 1
 const IS_ROAD := 1 << 2
 
+## Values in `explored`.
+const UNEXPLORED := 0
+const EXPLORED := 255
+
 ## Value in `occupancy` meaning "no building here".
 const NO_OCCUPANT := -1
 
@@ -78,6 +82,12 @@ var occupancy := PackedInt32Array()
 var blocking := PackedByteArray()
 ## Derived: the occupant's cost if occupied, otherwise the terrain's.
 var cost := PackedByteArray()
+## Fog of war (Stage 3b): EXPLORED or UNEXPLORED per tile. Stored as 0 / 255
+## rather than 0 / 1 so FogRenderer can hand the array to an L8 image as it is,
+## with no per-pixel loop. A fresh grid is fully explored: only
+## LevelGenerator.generate() fogs a map, so hand-built maps (tests, and any
+## future authored map) are visible unless they ask otherwise.
+var explored := PackedByteArray()
 
 ## The occupant's own contribution, stored rather than recomputed so that
 ## changing terrain under a building, or a building over terrain, gives the same
@@ -106,6 +116,7 @@ func resize(map_size: Vector2i) -> void:
 	cost.resize(n); cost.fill(COST_OPEN)
 	_occupant_blocking.resize(n); _occupant_blocking.fill(0)
 	_occupant_cost.resize(n); _occupant_cost.fill(0)
+	explored.resize(n); explored.fill(EXPLORED)
 
 
 func tile_count() -> int:
@@ -212,6 +223,36 @@ func get_cost_at(i: int) -> int:
 
 func is_passable_at(i: int) -> bool:
 	return cost[i] != COST_IMPASSABLE and (blocking[i] & BLOCKS_UNIT) == 0
+
+
+# --- Fog of war ---------------------------------------------------------------
+
+func is_explored(cell: Vector2i) -> bool:
+	return explored[cell.y * size.x + cell.x] != UNEXPLORED
+
+
+func is_explored_at(i: int) -> bool:
+	return explored[i] != UNEXPLORED
+
+
+## Explores every tile within `radius` of `center` (a disc, not a square).
+## Returns the indices that were unexplored until now -- empty when the disc
+## was already known, which is the common case for a unit walking home.
+func reveal_circle(center: Vector2i, radius: int) -> PackedInt32Array:
+	var fresh := PackedInt32Array()
+	var r2 := radius * radius + radius   # the +radius rounds the rim off nicely
+	for y in range(maxi(center.y - radius, 0), mini(center.y + radius, size.y - 1) + 1):
+		var dy := y - center.y
+		var row := y * size.x
+		for x in range(maxi(center.x - radius, 0), mini(center.x + radius, size.x - 1) + 1):
+			var dx := x - center.x
+			if dx * dx + dy * dy > r2:
+				continue
+			var i := row + x
+			if explored[i] == UNEXPLORED:
+				explored[i] = EXPLORED
+				fresh.append(i)
+	return fresh
 
 
 # --- Derivation ---------------------------------------------------------------

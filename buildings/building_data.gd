@@ -22,6 +22,9 @@ extends Resource
 @export var build_work := 0.0
 ## For stat targeting, e.g. ["building", "house", "builder_house"].
 @export var tags := PackedStringArray()
+## Tiles of fog cleared around it, once, when it is finished. 0 = none.
+## The watchtower's whole job; any building can have one.
+@export var reveal_radius := 0
 
 @export_group("Placement")
 ## If set, it must be placed touching (8 neighbours) a building whose type
@@ -35,6 +38,9 @@ extends Resource
 ## A house gives beds to one kind of unit; capacity is the HOUSE_CAPACITY stat.
 @export var is_house := false
 @export var house_for: WorkerRoster.Kind = WorkerRoster.Kind.BUILDER
+## Beds before upgrades: the base of this house type's HOUSE_CAPACITY stat.
+## 0 = the stat's registry default (3).
+@export var beds := 0
 
 @export_group("Grid")
 ## Units cannot walk through this building's tiles. True for almost everything.

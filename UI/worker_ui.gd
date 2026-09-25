@@ -2,7 +2,8 @@ extends HBoxContainer
 ## The worker bar along the bottom: one slot per worker kind.
 ##
 ## Miners show idle/total: click the slot, then click a mine to send one.
-## Builders and carriers show count/beds, since beds are what limit buying more.
+## Builders, carriers and explorers show count/beds, since beds are what limit
+## buying more. Explorers are sent like miners: click the slot, then anywhere.
 
 signal slot_pressed(kind: int)
 
@@ -90,6 +91,8 @@ func refresh() -> void:
 			var beds: int = _units.beds(kind)
 			label.text = "%d/%d" % [total, beds]
 			panel.tooltip_text = "%ss: %d, beds for %d." % [kind_name, total, beds]
+			if kind == WorkerRoster.Kind.EXPLORER:
+				panel.tooltip_text += "\nClick, then click anywhere (fog too) to send one."
 
 
 ## Highlights the slot of the kind being commanded; -1 clears it.

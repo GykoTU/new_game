@@ -269,6 +269,7 @@ of magnitude more memory and lookup time than a flat array.
 | `occupancy` | `PackedInt32Array` | source | building id, or `NO_OCCUPANT` (-1) |
 | `blocking` | `PackedByteArray` | derived | `BLOCKS_UNIT`, `BLOCKS_PROJECTILE`, `IS_ROAD` |
 | `cost` | `PackedByteArray` | derived | movement cost; `255` = impassable |
+| `explored` | `PackedByteArray` | source | fog of war: `0` hidden, `255` explored (Stage 3b) |
 
 Plus two internal byte arrays holding the occupant's own contribution. Storing
 it costs two bytes per tile and buys order-independence: changing terrain under
@@ -687,7 +688,8 @@ Dev shortcuts today: **Ctrl+N** new run, **Ctrl+G** grant resources (hold it
 to keep granting: after 0.35 s, 10 times a second, in wall time so it works
 while paused; each grant in one hold is 1.25x the last, capped at 1e9 per
 grant, for stress tests), **F3** stat overlay (every modifier source and every resolved
-stat, live), **Ctrl+T** skip to dusk or dawn, **Ctrl+K** destroy the base
+stat, live), **Ctrl+T** skip to dusk or dawn, **Ctrl+F** reveal the whole
+map, **Ctrl+K** destroy the base
 (which ends the run, for testing the summary).
 
 ### UI and input: rules that are easy to break
@@ -885,18 +887,96 @@ decide what to do with it.
 - **Dev shortcuts:** Ctrl+T skips to the end of the current phase, Ctrl+K
   destroys the base (both debug-only, per the key-bindings rules).
 
-### Planned: Stage 3b
+### Exploration: fog, the explorer, points of interest (implemented, Stage 3b)
 
-**Fog of war (3b).** A `WorldGrid` layer, one byte per tile. Units reveal a
-radius only when they cross into a new tile, never every frame. It is drawn as
-one texture, one pixel per tile, updated per changed tile and laid over the
-map by a shader: one draw call, no node per tile. Saved with the level. Things
-under fog are neither drawn nor clickable.
+**Diagram: [`docs/exploration.svg`](docs/exploration.svg)** — the start
+clearing, how tiles get explored, the explorer's decision order, and what each
+point of interest gives.
 
-**Points of interest (3b).** Placed by the generator, hidden by fog, and
-interacted with by the explorer. Blueprints go to the run's unlock set; meta
-currencies go to the permanent profile, which is why the profile migrates
-rather than refuses (section 9).
+**Fog of war.** `WorldGrid.explored`, one byte per tile, saved with the level
+(deflate-compressed: 10 000 tiles save as about 80 bytes). Two states only:
+seen or never seen. Nothing is re-hidden when a unit walks away; a "currently
+in sight" layer for enemies can come in Stage 4 as a second layer without
+touching this one.
+
+- **Stored as 0 / 255, not 0 / 1**, so `FogRenderer` hands the array to an L8
+  image as it is: one native copy per rebuild, no per-pixel GDScript loop.
+- **A fresh `WorldGrid` is fully explored.** Only `LevelGenerator.generate()`
+  fogs a map, so hand-built maps (every test world) and a run saved before fog
+  existed stay fully visible. Hiding a map the player has already seen would
+  take something away.
+- **The start clearing.** A new map is dark except a disc around the map
+  centre (`start_reveal_radius` 10). The generator keeps `start_open_radius`
+  (5) of plain grass there for the base, always places a small ice patch with a
+  **diamond mine** just inside the disc (the one mine reachable from the
+  start), and tops the disc up to `start_trees` (6) trees. The camera opens on
+  it. The base has to go inside because **`can_place` refuses unexplored
+  tiles**, for every building.
+- **Nothing under fog can be used**: tree marking, sending a miner to a mine,
+  lava marks, the bucket's water tile and every placement check `explored`.
+- **Revealing.** `FogOfWar.step_units` runs after the units each tick. Only
+  WALKING units are looked at, and only when they cross into a new tile
+  (`_last` per unit id), so a unit standing still or walking known ground
+  costs one compare. World-to-cell is plain arithmetic here, not
+  `world_to_cell` (two engine calls through the TileMapLayer): 200 walking
+  units cost about 0.2 ms per tick. Workers reveal 2 tiles, the explorer 6.
+  A finished building with `BuildingData.reveal_radius` reveals once (the
+  watchtower, 12).
+- **Drawing.** One `Sprite2D` stretched over the map, one texture pixel per
+  tile, linear filtering for a soft edge, and a shader that doubles the fog's
+  slope so it is fully opaque by the *boundary* of the first hidden tile: a
+  hidden tile is never partly visible, only the outer half of the last
+  explored tile is shaded. `z_index` 2: over buildings, units and the night
+  glow, under the placer's ghost. Rebuilt at most once a frame, only after a
+  reveal; not drawn at all once nothing is hidden.
+
+**The explorer** (`WorkerRoster.Kind.EXPLORER`, appended per D8). Bought with
+gold; needs a bed in an **explorer house** (crafted, known from the start,
+`BuildingData.beds` = 1 — a new field that sets a house type's base
+HOUSE_CAPACITY). Click its worker-bar slot, then click anywhere, fog included.
+
+- `UnitPathing.cells_toward` asks A* for a **partial path**: all the way if the
+  spot is reachable, otherwise to the reachable tile closest to it. A click on
+  a lake ends at the shore.
+- `UnitStore.goal` holds the tile index it was sent toward. Its think order:
+  a spotted point of interest (the detour), then the goal, then home. When a
+  point of interest is spotted, explorers out exploring stop and re-think at
+  once (`on_poi_spotted`), so the detour happens as it comes into view.
+- **Night:** it turns back at dusk, *keeping* its goal, and sets out again at
+  dawn, like the commuter. It can't be sent at night.
+- Two explorers never go to the same point of interest; an unreachable one is
+  left alone for 10 s (`POI_RETRY_TICKS`) rather than re-searched three times
+  a second, because a failed A* search covers the whole reachable map.
+- `ExploreFlags` draws a flag at each goal, over the fog, **only if**
+  `assets/ui/explore_flag.png` exists: a grey placeholder square floating in
+  the fog would read as a bug.
+
+**Points of interest** (`Level/points_of_interest.gd`). The generator places
+them as ordinary buildings of type `poi_*` on free grass, at least
+`poi_min_distance` (16) from the centre and `poi_spacing` (8) apart; their
+sprites load through `Art`, so an undrawn one shows the placeholder instead
+of failing the level. **Spotted** means "its tile is explored" — not saved,
+derived from the fog on load. **Opened** means the explorer stood beside it
+for `open_seconds` (3; `UnitStore.State.OPENING`, finishing at `think_at`).
+
+| Type | Gives | Afterwards |
+|---|---|---|
+| `poi_blueprint_cache` | the next `Unlocks.FINDABLE` blueprint (watchtower, then city hall); 2 relics once both are known | removed |
+| `poi_relic_cache` | 1–3 relics | removed |
+| `poi_npc_house` | a placeholder message | stays, visited once |
+| `poi_fruit_tree` | a placeholder message | stays, visited once |
+
+**Relics** are the meta currency, kept in the profile (`profile["relics"]`,
+a new default key, so no migration). **They are written to the profile only
+when the run is saved**: `save_run()` takes the pending relics and banks them
+right after the run save that no longer holds their caches, and death banks
+the rest. Writing them at once would let a player open a cache, quit without
+saving, reload the dawn save and open it again. If the run save fails, the
+relics go back to pending. The run summary lists relics found; the title
+screen shows the total once there is one.
+
+**Watchtower and city hall** are the findable blueprints. The watchtower is a
+`reveal_radius` 12 building; the city hall is unique and does nothing yet.
 
 ### Progression
 Global XP from kills, exploration, and a slow survival drip that prevents
@@ -964,7 +1044,7 @@ one key in `main.gd.save_run()`, never touching the autoload.
 ### What a run save holds, and load order
 
     level, clock, economy, roster, shop, modifiers, units,
-    unlocks, inventory, forest, lava, director
+    unlocks, inventory, forest, lava, director, poi
 
 Load order is load-bearing: **shop purchases before modifiers**, because
 rebuilding an upgrade's modifiers reads its level from the purchase count; and

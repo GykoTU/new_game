@@ -54,6 +54,23 @@ func cells_between(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 	return out
 
 
+## Cells from `from` as far toward `to` as the ground allows: all the way if
+## it can be reached, otherwise to the reachable tile closest to it. That is
+## what an explorer sent into the fog needs -- the player clicked somewhere they
+## cannot see, and "as close as you can get" is the useful answer. `to` may be
+## solid (water, a mine); it is never stood on.
+func cells_toward(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	if not astar.is_in_boundsv(from):
+		return out
+	to = to.clamp(Vector2i.ZERO, _grid.size - Vector2i.ONE)
+	var restore := _open(from)
+	# allow_partial_path: ends at the reachable point closest to `to`.
+	out.assign(astar.get_id_path(from, to, true))
+	_close(from, restore)
+	return out
+
+
 ## Cells from `from` to the nearest tile touching a building, stopping BEFORE
 ## the building itself. Empty if the building cannot be reached. A unit already
 ## standing next to it, or on it, gets a one-cell path: [from].

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = "craft_city_hall"
+display_name = "City Hall"
+description = "Will let you set which jobs your workers do first. Not in use yet."
+icon_path = "res://assets/buildings/city_hall.png"
+kind = 2
+section = 1
+blueprint = "blueprint:city_hall"
+tags = PackedStringArray("city_hall")
+base_cost = Dictionary[int, int]({
+5: 30
+})
+building_id = "city_hall"

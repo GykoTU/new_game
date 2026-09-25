@@ -143,11 +143,26 @@ First loop the player can actually watch happen.
 
 ## Stage 3b — Exploration
 
-- [ ] Fog of war: the map is hidden until explored; explored tiles saved
-- [ ] Explorer NPC (bought with gold), sent out to reveal the map
-- [ ] Points of interest, hidden under fog, holding: blueprints, meta
-      currency, an interactable NPC living in a house, a tree with special
-      fruit
+- [x] Fog of war: a grid layer, saved compressed with the level; one texture
+      with a soft edge; nothing under it can be placed on, marked or clicked
+- [x] Start clearing around the map centre, always with trees and an ice
+      diamond mine; the base must go inside; the camera opens on it
+- [x] Workers reveal 2 tiles as they walk, the explorer 6 (only on entering
+      a new tile)
+- [x] Explorer (gold) + explorer house (wood, 1 bed); click its slot, then
+      anywhere, fog included; partial paths end as close as it gets; turns
+      back at dusk and resumes at dawn
+- [x] Points of interest, hidden under fog, spotted when explored, opened by
+      the explorer on a detour (3 s): blueprint caches, relic caches, an NPC
+      house and a special fruit tree (both placeholders)
+- [x] Findable blueprints: watchtower (reveals 12 tiles), city hall (no
+      function yet)
+- [x] Relics: the meta currency, banked into the profile when the run is
+      saved; shown in the run summary and on the title screen
+- [x] Dev shortcut: Ctrl+F reveals the whole map
+- [ ] Design: what the NPC in the house does
+- [ ] Design: what the special fruit does
+- [ ] City hall: the priorities UI (see Later)
 
 ## Stage 4 — Enemies
 
@@ -214,7 +229,7 @@ First loop the player can actually watch happen.
 - [ ] House occupancy upgrades: houses hold more units, and the building
       visibly expands
 - [ ] Fruit: gatherable again, possibly as a special-fruit point of interest
-- [ ] Meta currencies found at points of interest feed Stage 8
+- [ ] Relics (found at points of interest since 3b) feed Stage 8
 
 ## Continuous
 
@@ -245,6 +260,24 @@ Full paths, 32x32 unless stated. Ticked = the file exists.
 - [x] `assets/ground/ground_cobble.png`
 - [x] `assets/ui/bucket_empty.png` — before the one-time fill
 - [x] `assets/ui/bucket_full.png` — the permanent water bucket
+
+**3**
+- [x] `assets/ui/sun.png`
+- [x] `assets/ui/moon.png`
+
+**3b**
+- [ ] `assets/npcs/explorer.png` — or a horizontal strip of 32x32 frames
+- [ ] `assets/npcs/explorer_walk.png` — optional walk strip, like `carrier_walk.png`
+- [ ] `assets/ui/explorer_icon.png`
+- [ ] `assets/buildings/explorer_house.png`
+- [ ] `assets/buildings/watchtower.png`
+- [ ] `assets/buildings/city_hall.png` — one tile; say if it should be 2x2 (64x64)
+- [ ] `assets/buildings/poi/blueprint_cache.png`
+- [ ] `assets/buildings/poi/relic_cache.png`
+- [ ] `assets/buildings/poi/npc_house.png`
+- [ ] `assets/buildings/poi/tree_fruit_special.png` — the special fruit tree
+- [ ] `assets/ui/relic.png`
+- [ ] `assets/ui/explore_flag.png` — optional; without it no marker is drawn
 
 ## Open questions
 

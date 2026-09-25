@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = "craft_explorer_house"
+display_name = "Explorer House"
+description = "A home for 1 explorer. Place it from the building bar; a builder builds it."
+icon_path = "res://assets/buildings/explorer_house.png"
+kind = 2
+section = 1
+blueprint = "blueprint:explorer_house"
+tags = PackedStringArray("explorer_house")
+base_cost = Dictionary[int, int]({
+5: 12
+})
+building_id = "explorer_house"

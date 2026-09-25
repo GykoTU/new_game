@@ -13,15 +13,17 @@ enum Kind {
 	MINER,
 	BUILDER,
 	CARRIER,
+	EXPLORER,   ## Stage 3b
 	COUNT,
 }
 
-const _KEYS := ["miner", "builder", "carrier"]
+const _KEYS := ["miner", "builder", "carrier", "explorer"]
 ## Save key -> Kind, for loading.
-const KEYS_INDEX := {"miner": Kind.MINER, "builder": Kind.BUILDER, "carrier": Kind.CARRIER}
-const _DISPLAY := ["Miner", "Builder", "Carrier"]
+const KEYS_INDEX := {"miner": Kind.MINER, "builder": Kind.BUILDER, "carrier": Kind.CARRIER,
+	"explorer": Kind.EXPLORER}
+const _DISPLAY := ["Miner", "Builder", "Carrier", "Explorer"]
 const _ICONS := ["res://assets/ui/worker_icon.png", "res://assets/ui/builder_icon.png",
-	"res://assets/ui/carrier_icon.png"]
+	"res://assets/ui/carrier_icon.png", "res://assets/ui/explorer_icon.png"]
 
 var _counts := PackedInt32Array()
 ## The UnitSystem once attached. Untyped to avoid a class cycle with it.

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = "explorer"
+display_name = "Explorer"
+description = "Sent into the fog to map it, and opens what it finds there. Needs a free bed in an explorer house."
+icon_path = "res://assets/ui/explorer_icon.png"
+kind = 0
+section = 0
+blueprint = ""
+tags = PackedStringArray("explorer")
+base_cost = Dictionary[int, int]({
+0: 40
+})
+cost_growth = 1.5
+worker_kind = 3

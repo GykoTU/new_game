@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingData" format=3]
+
+[ext_resource type="Script" path="res://buildings/building_data.gd" id="1_bd"]
+
+[resource]
+script = ExtResource("1_bd")
+id = "watchtower"
+display_name = "Watchtower"
+texture_path = "res://assets/buildings/watchtower.png"
+max_health = 150.0
+build_work = 10.0
+tags = PackedStringArray("building", "watchtower")
+reveal_radius = 12
+allowed_grounds = 655

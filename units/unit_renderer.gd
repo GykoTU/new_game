@@ -12,13 +12,15 @@ extends Node2D
 ## Seconds per animation frame (Aseprite's default is 100 ms).
 @export var frame_time := 0.1
 
-## Sprites per unit kind. "walk" is optional; without it the idle sprite is
-## used while walking too.
+## Sprites per unit kind. "walk" is optional: listed or not, while its file
+## does not exist the idle sprite is used for walking too (never a placeholder).
 const LOOKS := {
 	WorkerRoster.Kind.MINER: {"idle": "res://assets/npcs/worker.png"},
 	WorkerRoster.Kind.BUILDER: {"idle": "res://assets/npcs/builder.png"},
 	WorkerRoster.Kind.CARRIER: {"idle": "res://assets/npcs/carrier.png",
 		"walk": "res://assets/npcs/carrier_walk.png"},
+	WorkerRoster.Kind.EXPLORER: {"idle": "res://assets/npcs/explorer.png",
+		"walk": "res://assets/npcs/explorer_walk.png"},
 }
 
 const _SHADER := """
@@ -66,6 +68,8 @@ func _ready() -> void:
 		_drop_batches[rkind] = dnode
 	for kind in LOOKS:
 		for anim in LOOKS[kind]:
+			if anim == "walk" and not Art.exists(LOOKS[kind][anim]):
+				continue   # not drawn yet: walk with the idle sprite
 			var tex := Art.texture(LOOKS[kind][anim])
 			@warning_ignore("integer_division")
 			var frames := maxi(tex.get_width() / maxi(tex.get_height(), 1), 1)
@@ -99,7 +103,7 @@ func draw_units(store: UnitStore, tick: int) -> void:
 			continue
 		var k: int = store.kind[id]
 		var anim := "walk" if store.state[id] == UnitStore.State.WALKING \
-			and LOOKS[k].has("walk") else "idle"
+			and _batches.has("%d:walk" % k) else "idle"
 		lists["%d:%s" % [k, anim]].append(id)
 
 	var ticks_per_frame := maxi(int(round(frame_time / GameClock.TICK_DELTA)), 1)

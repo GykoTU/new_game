@@ -16,6 +16,7 @@ enum State {
 	STATIONED,  ## miner inside its worker house: hidden, safe, gathering
 	WORKING,    ## builder at a construction or repair job
 	MINING,     ## the commuting miner, working outside its mine: visible, exposed
+	OPENING,    ## explorer beside a point of interest; done at tick `think_at`
 }
 
 ## Why a walking unit is walking. Decides what happens when it arrives.
@@ -28,6 +29,8 @@ enum Task {
 	TO_DROPOFF,
 	FLEE,
 	TO_MINE,    ## the commuting miner, on its way to mine outside
+	TO_EXPLORE, ## explorer, heading for the tile in `goal`
+	TO_POI,     ## explorer, heading for the point of interest in `target`
 }
 
 var kind := PackedInt32Array()
@@ -49,6 +52,9 @@ var fetch := PackedInt32Array()
 ## JobBoard.Kind of the builder job in `target`, or NONE. Tile jobs (cobble,
 ## fill the bucket) keep a grid tile index in `target`, not a building id.
 var job := PackedInt32Array()
+## Explorer: grid tile index it was sent toward, or NONE. It detours to points
+## of interest on the way and resumes toward this afterwards.
+var goal := PackedInt32Array()
 ## Per-unit offset so a crowd does not animate in lockstep.
 var anim_offset := PackedInt32Array()
 ## Next tick at which the unit reconsiders what to do. Staggered, so idle units
@@ -76,7 +82,7 @@ func spawn(p_kind: int, p_pos: Vector2, p_home: int, max_hp: float, tick: int) -
 		kind.append(p_kind); state.append(State.IDLE); task.append(Task.NONE)
 		pos.append(p_pos); home.append(p_home); target.append(NONE)
 		carry.append(0); carry_kind.append(0); facing_left.append(0)
-		inside.append(1); fetch.append(NONE); job.append(NONE)
+		inside.append(1); fetch.append(NONE); job.append(NONE); goal.append(NONE)
 		anim_offset.append((id * 7) % 97); think_at.append(tick + id % 20)
 		hp.append(max_hp); path.append(PackedVector2Array()); path_i.append(0)
 		_alive.append(1)
@@ -86,7 +92,7 @@ func spawn(p_kind: int, p_pos: Vector2, p_home: int, max_hp: float, tick: int) -
 		kind[id] = p_kind; state[id] = State.IDLE; task[id] = Task.NONE
 		pos[id] = p_pos; home[id] = p_home; target[id] = NONE
 		carry[id] = 0; carry_kind[id] = 0; facing_left[id] = 0
-		inside[id] = 1; fetch[id] = NONE; job[id] = NONE
+		inside[id] = 1; fetch[id] = NONE; job[id] = NONE; goal[id] = NONE
 		think_at[id] = tick + id % 20
 		hp[id] = max_hp; path[id] = PackedVector2Array(); path_i[id] = 0
 		_alive[id] = 1

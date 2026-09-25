@@ -35,6 +35,8 @@ var level: LevelGenerator
 var forest: Forest
 ## Lava marks, cobble and the bucket (Stage 2c). Optional, like forest.
 var lava: LavaWorks
+## Points of interest (Stage 3b). Optional: without it, explorers only explore.
+var pois: PointsOfInterest
 var economy: Economy
 var modifiers: ModifierSet
 ## "miner" / "builder" / "carrier" -> StatBlock, one per type (D7).
@@ -57,6 +59,12 @@ var _commuter := UnitStore.NONE
 var _first_house_done := false
 ## The mine the commuter was working when night fell, so dawn sends it back.
 var _commuter_mine := UnitStore.NONE
+## Point of interest id -> tick until which it counts as unreachable. An idle
+## explorer re-thinks three times a second; a failed A* search over the whole
+## map each time would be the most expensive thing in the simulation.
+var _poi_unreachable := {}
+## Ticks an unreachable point of interest is left alone before trying again.
+const POI_RETRY_TICKS := 600
 var _rng := RandomNumberGenerator.new()
 
 
@@ -95,6 +103,7 @@ func clear() -> void:
 	_commuter = UnitStore.NONE
 	_first_house_done = false
 	_commuter_mine = UnitStore.NONE
+	_poi_unreachable.clear()
 	for kind in WorkerRoster.Kind.COUNT:
 		changed.emit(kind)
 
@@ -148,7 +157,11 @@ func capacity(house: int) -> int:
 	var type := level.store.get_type(house)
 	if not _house_blocks.has(type):
 		var data := level.get_building_data(type)
-		_house_blocks[type] = StatBlock.new(modifiers, data.tags if data != null else PackedStringArray())
+		var base := {}
+		if data != null and data.beds > 0:
+			base[Stats.Id.HOUSE_CAPACITY] = float(data.beds)
+		_house_blocks[type] = StatBlock.new(modifiers,
+			data.tags if data != null else PackedStringArray(), base)
 	return int(round(_house_blocks[type].get_value(Stats.Id.HOUSE_CAPACITY)))
 
 
@@ -282,6 +295,115 @@ func _on_building_placed(type: String, cell: Vector2i) -> void:
 				return
 
 
+# --- Explorers ----------------------------------------------------------------
+
+## Sends an explorer toward a tile, fog or not. Returns "" on success, or why
+## not. It walks as far toward the tile as the ground allows (a click on water
+## ends at the shore), stopping on the way at any point of interest it spots.
+func send_explorer(cell: Vector2i) -> String:
+	if count(WorkerRoster.Kind.EXPLORER) == 0:
+		return "You have no explorers. Buy one in the shop."
+	if night:
+		return "Explorers don't go out at night."
+	if not level.grid.in_bounds(cell):
+		return "That is off the map."
+	# An explorer with no errand first, then any not busy opening something;
+	# nearest to the spot either way.
+	var best := UnitStore.NONE
+	var best_score := INF
+	var target := level.cell_to_world(cell)
+	for id in store.ids_of_kind(WorkerRoster.Kind.EXPLORER):
+		if store.state[id] == UnitStore.State.OPENING:
+			continue
+		var score := store.pos[id].distance_squared_to(target)
+		if store.goal[id] != UnitStore.NONE:
+			score += 1e12
+		if score < best_score:
+			best = id
+			best_score = score
+	if best == UnitStore.NONE:
+		return "Your explorer is busy. Try again in a moment."
+	if pathing.cells_toward(_cell_of(best), cell).size() <= 1:
+		return "Your explorer can't get any closer to there."
+	store.goal[best] = level.grid.index(cell)
+	# On its way to a point of interest: finish that first, the goal waits.
+	if not (store.state[best] == UnitStore.State.WALKING and store.task[best] == UnitStore.Task.TO_POI):
+		store.state[best] = UnitStore.State.IDLE
+		store.task[best] = UnitStore.Task.NONE
+		store.think_at[best] = tick
+	changed.emit(WorkerRoster.Kind.EXPLORER)
+	return ""
+
+
+## A point of interest came into view. Explorers out exploring stop and
+## reconsider, which sends the nearest one on a detour; idle ones at home go
+## too (a watchtower may have spotted it).
+func on_poi_spotted(_poi: int = -1, _type: String = "") -> void:
+	for id in store.ids_of_kind(WorkerRoster.Kind.EXPLORER):
+		var st: int = store.state[id]
+		if st == UnitStore.State.IDLE or (st == UnitStore.State.WALKING
+				and store.task[id] in [UnitStore.Task.TO_EXPLORE, UnitStore.Task.GO_HOME]):
+			store.state[id] = UnitStore.State.IDLE
+			store.task[id] = UnitStore.Task.NONE
+			store.think_at[id] = tick
+
+
+## Explorer: walk to the nearest spotted point of interest no other explorer
+## is already seeing to. Returns false if there is none it can reach.
+func _go_open_poi(id: int) -> bool:
+	if pois == null:
+		return false
+	var from := _cell_of(id)
+	var here := store.pos[id]
+	var candidates := Array(pois.waiting())
+	candidates.sort_custom(func(a, b): return _building_pos(a).distance_squared_to(here) \
+		< _building_pos(b).distance_squared_to(here))
+	for poi in candidates:
+		if int(_poi_unreachable.get(poi, -1)) > tick or _poi_taken(poi, id):
+			continue
+		var cells := _cells_to(from, poi)
+		if cells.is_empty():
+			_poi_unreachable[poi] = tick + POI_RETRY_TICKS
+			continue
+		store.target[id] = poi
+		_walk_cells(id, cells, UnitStore.Task.TO_POI)
+		return true
+	return false
+
+
+## True if another explorer is walking to, or opening, this point of interest.
+func _poi_taken(poi: int, except: int) -> bool:
+	for other in store.ids_of_kind(WorkerRoster.Kind.EXPLORER):
+		if other != except and store.target[other] == poi and (store.state[other] == UnitStore.State.OPENING
+				or (store.state[other] == UnitStore.State.WALKING and store.task[other] == UnitStore.Task.TO_POI)):
+			return true
+	return false
+
+
+## Explorer: on toward the tile it was sent to. Returns false (and forgets the
+## goal) once it is as close as it can get.
+func _head_for_goal(id: int) -> bool:
+	var goal: int = store.goal[id]
+	if goal == UnitStore.NONE:
+		return false
+	var cells := pathing.cells_toward(_cell_of(id), level.grid.cell_at(goal))
+	if cells.size() <= 1:
+		store.goal[id] = UnitStore.NONE   # arrived, or this is as near as it gets
+		changed.emit(WorkerRoster.Kind.EXPLORER)
+		return false
+	_walk_cells(id, cells, UnitStore.Task.TO_EXPLORE)
+	return true
+
+
+func _finish_opening(id: int) -> void:
+	var poi: int = store.target[id]
+	store.target[id] = UnitStore.NONE
+	store.state[id] = UnitStore.State.IDLE
+	store.think_at[id] = tick
+	if pois != null:
+		pois.open(poi)   # may remove the building; nothing here refers to it any more
+
+
 # --- Day and night ------------------------------------------------------------
 
 ## Dusk: everyone heads home. Builders keep repairing (they re-decide on their
@@ -298,6 +420,13 @@ func on_night_started() -> void:
 			store.state[id] = UnitStore.State.IDLE
 		if store.state[id] == UnitStore.State.WORKING and store.job[id] != JobBoard.Kind.REPAIR:
 			_stop_working(id)   # a half-built site keeps its progress
+		if store.kind[id] == WorkerRoster.Kind.EXPLORER and store.state[id] == UnitStore.State.WALKING \
+				and store.task[id] != UnitStore.Task.GO_HOME:
+			# Turn back now rather than walk on into the dark. The goal is kept:
+			# it sets out again at dawn, like the commuter.
+			store.state[id] = UnitStore.State.IDLE
+			store.task[id] = UnitStore.Task.NONE
+			store.target[id] = UnitStore.NONE
 		if store.state[id] == UnitStore.State.IDLE:
 			store.think_at[id] = tick   # decide again now, which sends them home
 
@@ -338,6 +467,9 @@ func step(dt: float) -> void:
 				if tick >= store.think_at[id]:
 					store.think_at[id] = tick + THINK_INTERVAL
 					_think(id)
+			UnitStore.State.OPENING:
+				if tick >= store.think_at[id]:
+					_finish_opening(id)
 	_gather(dt)
 
 
@@ -371,6 +503,11 @@ func _think(id: int) -> void:
 					return
 			store.home[id] = UnitStore.NONE   # lost or unreachable: wait in the base
 			_go_home_if_away(id)
+		WorkerRoster.Kind.EXPLORER:
+			# Points of interest in sight first (the detour), then the spot it
+			# was sent to, then home. Never out at night.
+			if night or not (_go_open_poi(id) or _head_for_goal(id)):
+				_go_home_if_away(id)
 
 
 func _move(id: int, dt: float) -> void:
@@ -426,6 +563,14 @@ func _arrive(id: int) -> void:
 			_dropoff(id)
 		UnitStore.Task.GO_HOME, UnitStore.Task.FLEE:
 			store.inside[id] = 1
+		UnitStore.Task.TO_POI:
+			var poi: int = store.target[id]
+			if pois != null and pois.is_waiting(poi):
+				store.state[id] = UnitStore.State.OPENING
+				store.think_at[id] = tick + int(round(pois.open_seconds / GameClock.TICK_DELTA))
+			else:
+				store.target[id] = UnitStore.NONE   # someone got there first
+		# TO_EXPLORE needs nothing: idle, it re-thinks and heads on or home.
 	# An idle unit decides again at once, instead of standing for a think tick.
 	if store.state[id] == UnitStore.State.IDLE:
 		store.think_at[id] = tick
@@ -771,6 +916,7 @@ func _on_building_removed(b: int, _type: String, _cell: Vector2i) -> void:
 				store.think_at[id] = tick
 			changed.emit(store.kind[id])
 	_progress.erase(b)
+	_poi_unreachable.erase(b)
 	if _house_mine.has(b):
 		_mine_house.erase(_house_mine[b])
 		_house_mine.erase(b)
@@ -804,6 +950,7 @@ func get_save_data() -> Dictionary:
 				if store.state[id] == UnitStore.State.MINING and level.store.is_alive(store.target[id]) \
 				else Vector2i(-1, -1),
 			"inside": store.inside[id] == 1,
+			"goal": _goal_cell(id),
 			"carry": store.carry[id],
 			"carry_kind": ResourceKind.key_of(store.carry_kind[id]) if store.carry[id] > 0 else "",
 			"hp": store.hp[id],
@@ -878,6 +1025,9 @@ func load_save_data(data: Dictionary) -> bool:
 			if level.store.is_alive(m):
 				store.state[id] = UnitStore.State.MINING
 				store.target[id] = m
+		var goal = entry.get("goal", null)
+		if goal != null and level.grid.in_bounds(goal):
+			store.goal[id] = level.grid.index(goal)
 		if int(entry["carry"]) > 0:
 			store.carry[id] = int(entry["carry"])
 			store.carry_kind[id] = ResourceKind.id_from_key(entry["carry_kind"])
@@ -888,6 +1038,13 @@ func load_save_data(data: Dictionary) -> bool:
 
 
 # --- Helpers ------------------------------------------------------------------
+
+## An explorer's goal as a cell for the save, or null.
+func _goal_cell(id: int) -> Variant:
+	if store.goal[id] == UnitStore.NONE:
+		return null
+	return level.grid.cell_at(store.goal[id])
+
 
 func _stat(kind: int, stat: int) -> float:
 	return type_blocks[WorkerRoster.key_of(kind)].get_value(stat)
