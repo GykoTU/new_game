@@ -9,6 +9,9 @@ extends Node2D
 
 ## Pause reason pushed while the options menu is open.
 const PAUSE_OPTIONS := "options_menu"
+## Pause reason pushed when the base falls. Never popped: the run is over, and
+## the only way on is back to the title screen.
+const PAUSE_GAME_OVER := "game_over"
 
 ## Stat blocks for unit types, one per TYPE (D7). Keys match WorkerRoster's
 ## save keys. "base" overrides registry defaults; "stats" is what the F3
@@ -71,8 +74,20 @@ var inventory := BuildingInventory.new()
 var forest := Forest.new()
 ## Lava marked for cobble, and the bucket.
 var lava := LavaWorks.new()
+## The day counter and the day/night cycle.
+var director := RunDirector.new()
 ## Owned items (the bucket), top left. Created in _ready.
 var item_bar
+## Day number and phase progress, under the resource bar. Created in _ready.
+var day_bar
+## Shown when the base falls. Created in _ready.
+var run_summary
+## Tints the world (not the UI) with the director's light. Created in _ready.
+var _tint: CanvasModulate
+## The faint halo under buildings at night. Created in _ready.
+var building_glow: BuildingGlow
+## True from the moment the base falls, so the run is neither saved nor ended twice.
+var _run_over := false
 ## UNIT_TYPES name -> StatBlock
 var type_blocks := {}
 ## True while the player is choosing a mine to send a miner to.
@@ -105,10 +120,32 @@ func _ready() -> void:
 	marks.bind(lava, level)
 	item_bar = preload("res://UI/item_bar.gd").new()
 	item_bar.name = "ItemBar"
-	$UI.add_child(item_bar)
-	$UI.move_child(item_bar, options_menu.get_index())   # the options menu stays last
+	_add_ui(item_bar)
 	item_bar.bind(unlocks)
 	item_bar.item_pressed.connect(_on_item_pressed)
+	day_bar = preload("res://UI/day_bar.gd").new()
+	day_bar.name = "DayBar"
+	_add_ui(day_bar)
+	day_bar.bind(director)
+	run_summary = preload("res://UI/run_summary.gd").new()
+	run_summary.name = "RunSummary"
+	_add_ui(run_summary)
+	run_summary.return_pressed.connect(_return_to_title)
+	# A CanvasModulate tints its own canvas layer, so as a child of Main it
+	# colours the world (level, marks, units) and leaves every UI layer alone.
+	_tint = CanvasModulate.new()
+	_tint.name = "DayNightTint"
+	add_child(_tint)
+	building_glow = BuildingGlow.new()
+	building_glow.name = "BuildingGlow"
+	add_child(building_glow)
+	# Above the ground and the buildings it lights, below the units, who stay
+	# crisp on top of it.
+	move_child(building_glow, unit_renderer.get_index())
+	building_glow.bind(level)
+	director.day_started.connect(_on_day_started)
+	director.phase_changed.connect(_on_phase_changed)
+	level.building_removed.connect(_on_building_removed)
 	build_placer.tile_picked.connect(_on_tile_picked)
 	build_placer.paint_started.connect(_on_paint_started)
 	build_placer.paint_moved.connect(_on_paint_moved)
@@ -145,6 +182,13 @@ func _ready() -> void:
 	Art.report_missing(_referenced_art())
 
 
+## UI created in code goes in front of the options menu, which stays last so it
+## draws over everything else.
+func _add_ui(node: Node) -> void:
+	$UI.add_child(node)
+	$UI.move_child(node, options_menu.get_index())
+
+
 func _process(delta: float) -> void:
 	var ticks := clock.advance(delta)
 	for i in ticks:
@@ -152,15 +196,24 @@ func _process(delta: float) -> void:
 	# Drawn once per frame, after the simulation, never from inside it.
 	unit_renderer.draw_units(units.store, clock.tick_count)
 	unit_renderer.draw_drops(units.drops, clock.tick_count)
+	var light := director.light_colour()
+	_tint.color = light
+	building_glow.set_night(director.darkness(), light)
+	day_bar.refresh()
 	_debug_repeat(delta)
 
 
 ## The single place simulation order is decided. Every system that advances the
 ## world is stepped from here, in this order, with a fixed dt.
-##   1. units -- move, decide, build, chop, gather, haul (UnitSystem.step)
-##   2. forest -- stumps rot, trees regrow (Forest.step)
-## Systems land here as they are built, in the order they must run.
+##   1. director -- day/night, the day counter (RunDirector.step)
+##   2. units -- move, decide, build, chop, gather, haul (UnitSystem.step)
+##   3. forest -- stumps rot, trees regrow (Forest.step)
+## Systems land here as they are built, in the order they must run. The director
+## goes first so that a phase change takes effect on the same tick the units
+## decide what to do with it.
 func _simulate(dt: float) -> void:
+	director.step()
+	units.night = director.is_night
 	units.tick = clock.tick_count
 	units.step(dt)
 	forest.step(clock.tick_count)
@@ -171,6 +224,11 @@ func _simulate(dt: float) -> void:
 func _start_new_run() -> void:
 	_end_dispatch()
 	build_placer.stop()
+	_run_over = false
+	run_summary.hide_summary()
+	clock.pop_pause(PAUSE_GAME_OVER)
+	director.reset()
+	units.night = false
 	units.clear()
 	modifiers.clear()
 	shop.reset()
@@ -215,6 +273,8 @@ func _load_run(save: Dictionary) -> bool:
 		return false
 	forest.load_save_data(save.get("forest", {}))
 	lava.load_save_data(save.get("lava", {}))
+	director.load_save_data(save.get("director", {}))
+	units.night = director.is_night
 	if save.has("clock"):
 		clock.load_save_data(save["clock"])
 	return true
@@ -223,6 +283,8 @@ func _load_run(save: Dictionary) -> bool:
 ## Assembles everything a run needs to resume. Systems own their own save
 ## shape; this function only decides which of them are in a run save.
 func save_run() -> void:
+	if _run_over:
+		return   # the run save was deleted when the base fell; do not write it back
 	var ok := SaveManager.save_run({
 		"level": level.get_save_data(),
 		"clock": clock.get_save_data(),
@@ -235,8 +297,9 @@ func save_run() -> void:
 		"inventory": inventory.get_save_data(),
 		"forest": forest.get_save_data(),
 		"lava": lava.get_save_data(),
-		# progression and the day/night director join this as they are built.
-		# SaveManager neither knows nor cares what these keys mean.
+		"director": director.get_save_data(),
+		# progression joins this as it is built. SaveManager neither knows nor
+		# cares what these keys mean.
 	})
 	if not ok:
 		push_error("Main: the run could not be saved.")
@@ -248,6 +311,67 @@ func save_run() -> void:
 ## Augments (Stage 7) will be looked up here too.
 func _resolve_modifier_source(source: String) -> Variant:
 	return shop.resolve_source(source)
+
+
+# --- Day, night and death -----------------------------------------------------
+
+## Dawn. Autosaving here means a lost run costs at most one day, and the day
+## boundary is the one moment when nobody is mid-job.
+func _on_day_started(day: int) -> void:
+	save_run()
+	toast.show_message("Day %d" % day, 3.0)
+
+
+func _on_phase_changed(is_night: bool, _day: int) -> void:
+	if is_night:
+		units.on_night_started()
+		toast.show_message("Night falls. Everyone heads home.", 3.0)
+	else:
+		units.on_day_started()
+
+
+## The base is the run. Anything else being removed is ordinary business.
+func _on_building_removed(_id: int, type: String, _cell: Vector2i) -> void:
+	if type == "base" and not _run_over:
+		_end_run()
+
+
+## Freeze the world, throw the run away, keep what the profile remembers.
+func _end_run() -> void:
+	_run_over = true
+	_end_dispatch()
+	build_placer.stop()
+	clock.push_pause(PAUSE_GAME_OVER)
+	toast.hide_message()
+	SaveManager.delete_run()
+	var profile := SaveManager.profile
+	profile["runs_ended"] = int(profile.get("runs_ended", 0)) + 1
+	profile["best_day"] = maxi(int(profile.get("best_day", 0)), director.day)
+	profile["total_ticks"] = int(profile.get("total_ticks", 0)) + clock.tick_count
+	SaveManager.save_profile()
+	run_summary.show_run("Your base has fallen", _summary_rows())
+
+
+func _summary_rows() -> Array:
+	var seconds := int(clock.get_elapsed_seconds())
+	var workers := 0
+	for kind in WorkerRoster.Kind.COUNT:
+		workers += units.count(kind)
+	var rows := [
+		["Days survived", str(director.day)],
+		["Time", "%d:%02d" % [floori(seconds / 60.0), seconds % 60]],
+		["Workers", str(workers)],
+	]
+	for kind in ResourceKind.count():
+		var amount := economy.amount(kind)
+		if amount > 0:
+			rows.append([ResourceKind.display_of(kind), str(amount)])
+	rows.append(["Best day so far", str(int(SaveManager.profile.get("best_day", 0)))])
+	return rows
+
+
+func _return_to_title() -> void:
+	get_tree().change_scene_to_file("res://game/title_screen.tscn")
 
 
 func _count_run_started() -> void:
@@ -268,6 +392,7 @@ func _referenced_art() -> Array:
 	paths.append("res://assets/ui/sale_tag.png")
 	paths.append(building_ui.SLOT_TEXTURE)
 	paths.append_array(preload("res://UI/item_bar.gd").art_paths())
+	paths.append_array(preload("res://UI/day_bar.gd").art_paths())
 	for data in level.placeable_buildings:
 		if data != null and data.texture == null:
 			paths.append(data.texture_path)
@@ -487,6 +612,13 @@ func _debug_input(event: InputEvent) -> void:
 		_debug_grant()   # once on press; holding repeats it (_debug_repeat)
 	elif event.is_action_pressed("debug_stat_overlay"):
 		stat_overlay.toggle()
+	elif event.is_action_pressed("debug_skip_phase"):
+		director.force_phase_end()
+		print("Debug: skipping to the end of the ", "night" if director.is_night else "day")
+	elif event.is_action_pressed("debug_kill_base"):
+		if level.base_cell != LevelGenerator.INVALID_CELL:
+			level.remove_building(level.base_cell)   # ends the run (_on_building_removed)
+			print("Debug: base destroyed")
 	else:
 		return
 	get_viewport().set_input_as_handled()

@@ -41,6 +41,9 @@ var modifiers: ModifierSet
 var type_blocks := {}
 ## The simulation tick, set by main.gd before each step.
 var tick := 0
+## Night: workers stay home, except builders, who still take repair jobs (and
+## are out in the open while they do). Set by main.gd from the RunDirector.
+var night := false
 
 var _house_blocks := {}   # house building type -> StatBlock, for HOUSE_CAPACITY
 var _house_mine := {}     # worker house id -> mine id
@@ -52,6 +55,8 @@ var _progress := {}       # mine id -> float: work toward the next drop
 var _commuter := UnitStore.NONE
 ## True once the first miner house has been built; the commuter moves into it.
 var _first_house_done := false
+## The mine the commuter was working when night fell, so dawn sends it back.
+var _commuter_mine := UnitStore.NONE
 var _rng := RandomNumberGenerator.new()
 
 
@@ -89,6 +94,7 @@ func clear() -> void:
 	drops.clear()
 	_commuter = UnitStore.NONE
 	_first_house_done = false
+	_commuter_mine = UnitStore.NONE
 	for kind in WorkerRoster.Kind.COUNT:
 		changed.emit(kind)
 
@@ -276,6 +282,41 @@ func _on_building_placed(type: String, cell: Vector2i) -> void:
 				return
 
 
+# --- Day and night ------------------------------------------------------------
+
+## Dusk: everyone heads home. Builders keep repairing (they re-decide on their
+## next think), carriers deliver what they are carrying first, and the
+## commuter remembers its mine so it can go back at dawn.
+func on_night_started() -> void:
+	for id in store.size():
+		if not store.is_alive(id) or store.state[id] == UnitStore.State.STATIONED:
+			continue
+		if store.kind[id] == WorkerRoster.Kind.MINER and is_commuter(id) \
+				and store.state[id] == UnitStore.State.MINING:
+			_commuter_mine = store.target[id]
+			store.target[id] = UnitStore.NONE
+			store.state[id] = UnitStore.State.IDLE
+		if store.state[id] == UnitStore.State.WORKING and store.job[id] != JobBoard.Kind.REPAIR:
+			_stop_working(id)   # a half-built site keeps its progress
+		if store.state[id] == UnitStore.State.IDLE:
+			store.think_at[id] = tick   # decide again now, which sends them home
+
+
+## Dawn: the commuter goes back to the mine it was working last night, unless
+## the player gave it another mine overnight or it moved into a house.
+func on_day_started() -> void:
+	var mine := _commuter_mine
+	_commuter_mine = UnitStore.NONE
+	if mine == UnitStore.NONE or not is_commuter(_commuter):
+		return
+	if not level.store.is_alive(mine):
+		return   # the mine is gone; the miner waits in the base
+	if store.state[_commuter] == UnitStore.State.MINING \
+			or store.task[_commuter] == UnitStore.Task.TO_MINE:
+		return   # already sent somewhere
+	_send_commuter_outside(mine)
+
+
 # --- Simulation ---------------------------------------------------------------
 
 func step(dt: float) -> void:
@@ -300,8 +341,11 @@ func step(dt: float) -> void:
 	_gather(dt)
 
 
-## Builders: build > repair > (cobble > chop, later) > go home.
-## Carriers: fetch drops > go home. Only carriers carry resources.
+## By day, builders: build > repair > fill > cobble > chop, then go home;
+## carriers fetch drops, then go home.
+##
+## At night everyone stays home, with one exception: builders still repair
+## damaged buildings, which means leaving the house to do it.
 ## Miners: to their mine's home if they have one, else home (the commuter's
 ## house by the base, or the base itself for miners not yet sent).
 func _think(id: int) -> void:
@@ -310,12 +354,15 @@ func _think(id: int) -> void:
 		return
 	match store.kind[id]:
 		WorkerRoster.Kind.BUILDER:
-			if not _take_job(id):
+			if not _take_job(id, [JobBoard.Kind.REPAIR] if night else []):
 				_go_home_if_away(id)
 		WorkerRoster.Kind.CARRIER:
-			if not _take_drop(id):
+			if night or not _take_drop(id):
 				_go_home_if_away(id)
 		WorkerRoster.Kind.MINER:
+			if night and is_commuter(id):
+				_go_home_if_away(id)   # the commuter sleeps in the base
+				return
 			var house: int = store.home[id]
 			if _house_mine.has(house) and level.store.is_alive(house):
 				var cells := _cells_to(_cell_of(id), house)
@@ -387,10 +434,10 @@ func _arrive(id: int) -> void:
 
 # --- Builders -----------------------------------------------------------------
 
-func _take_job(id: int) -> bool:
+func _take_job(id: int, only: Array = []) -> bool:
 	var from := _cell_of(id)
 	var tries := 0
-	for job in board.candidates(store.pos[id]):
+	for job in board.candidates(store.pos[id], only):
 		var kind: int = job[0]
 		var b: int = job[1]
 		if _workers_on(b, kind) >= JobBoard.max_workers(kind):
@@ -536,7 +583,13 @@ func _on_construction_completed(b: int) -> void:
 
 ## Stationed miners, and the commuter mining outside, work toward the next drop. Each whole unit of work pops one
 ## resource out of the mine; a mine with too many drops lying around pauses.
+##
+## **Mines stand idle at night**, even for a miner that moved into its house
+## after dusk: nothing is produced until dawn. Part-finished work is kept, so a
+## night costs exactly the night, not the progress made before it.
 func _gather(dt: float) -> void:
+	if night:
+		return
 	var miners_at := {}   # mine id -> miners working it
 	for id in store.size():
 		if not store.is_alive(id):

@@ -47,11 +47,13 @@ func set_position_lookup(lookup: Callable, kind := -1) -> void:
 
 
 ## Every open job as [kind, id], most urgent first, nearest first within the
-## same priority.
-func candidates(from: Vector2) -> Array:
+## same priority. `only` limits it to certain kinds (at night: repairs only).
+func candidates(from: Vector2, only: Array = []) -> Array:
 	var out := []
 	for kind in PRIORITY:
 		if not _providers.has(kind):
+			continue
+		if not only.is_empty() and not only.has(kind):
 			continue
 		var ids: PackedInt32Array = _providers[kind].call()
 		var arr := Array(ids)

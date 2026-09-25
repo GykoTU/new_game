@@ -37,6 +37,8 @@ const ACTIONS := [
 	["debug_new_level",       "New level",         Category.DEBUG,  true,  true],
 	["debug_grant_resources", "Grant resources",   Category.DEBUG,  true,  true],
 	["debug_stat_overlay",    "Stat overlay",      Category.DEBUG,  true,  true],
+	["debug_skip_phase",      "Skip to dusk / dawn", Category.DEBUG, true, true],
+	["debug_kill_base",       "Destroy the base (ends the run)", Category.DEBUG, true, true],
 ]
 
 const _MOUSE_NAMES := {

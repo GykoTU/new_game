@@ -48,7 +48,7 @@ var _mesh: ArrayMesh
 func _ready() -> void:
 	# Above building sprites, so a unit walking past a house is never hidden.
 	z_index = 1
-	_mesh = _quad_mesh(32.0)
+	_mesh = quad_mesh(32.0)
 	var shader := Shader.new()
 	shader.code = _SHADER
 	# Drops first: children draw in order, so these end up under the units.
@@ -142,7 +142,8 @@ func draw_drops(drops: DropStore, tick: int) -> void:
 
 ## A 2D quad built by hand: a 3D QuadMesh has Y pointing up and would draw
 ## every sprite upside down.
-static func _quad_mesh(size: float) -> ArrayMesh:
+## A centred textured quad. Shared: BuildingGlow builds its halo from one too.
+static func quad_mesh(size: float) -> ArrayMesh:
 	var h := size / 2.0
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)

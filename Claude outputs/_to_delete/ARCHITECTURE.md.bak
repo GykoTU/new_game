@@ -346,13 +346,10 @@ directly. The augment screen and the options menu set speed to 0 rather than
 using `get_tree().paused`, so UI stays live.
 
 ### RunDirector
-Implemented in Stage 3: the day counter and the day/night phases (see "Day,
-night and the end of a run" below). Still to come with enemies (Stage 4): wave
-composition per night. Waves will scale by **shape, not only by number** --
-later nights favour fewer, tougher enemies or larger fragile swarms rather than
-simply multiplying the count, which keeps the entity budget bounded as runs get
-long. The day counter is what makes them stronger, so waves hang off
-`phase_changed` and read `day`.
+Day counter, day/night phase, and wave composition per night. Waves scale by
+**shape, not only by number**: later nights favour fewer, tougher enemies or
+larger fragile swarms rather than simply multiplying the count, which keeps the
+entity budget bounded as runs get long.
 
 ### Buildings
 `BuildingData` (exists) gains: `max_health`, `threat_priority`, `build_cost`,
@@ -687,8 +684,7 @@ Dev shortcuts today: **Ctrl+N** new run, **Ctrl+G** grant resources (hold it
 to keep granting: after 0.35 s, 10 times a second, in wall time so it works
 while paused; each grant in one hold is 1.25x the last, capped at 1e9 per
 grant, for stress tests), **F3** stat overlay (every modifier source and every resolved
-stat, live), **Ctrl+T** skip to dusk or dawn, **Ctrl+K** destroy the base
-(which ends the run, for testing the summary).
+stat, live).
 
 ### UI and input: rules that are easy to break
 
@@ -812,79 +808,6 @@ stages, tile jobs, and how a painted line of lava becomes a road to gold.
 - **Saved**: marks and progress by cell, and the fill progress; the bucket is
   in the unlocks.
 
-### Day, night and the end of a run (implemented, Stage 3)
-
-**Diagram: [`docs/day-night.svg`](docs/day-night.svg)** — one cycle with the
-light curve, what dusk and dawn each do, where the tint applies, and the death
-path.
-
-`game/run_director.gd`. A plain `RefCounted` owned by `main.gd`, stepped first
-in `_simulate()` so a phase change takes effect on the same tick the workers
-decide what to do with it.
-
-- **Counted in ticks**, like everything else (section 5): the cycle pauses with
-  the game and runs faster at 2x and 4x. 120 s of day, then 60 s of night, at
-  speed 1. A run starts at dawn of day 1; the day number goes up at dawn.
-- **Two signals.** `day_started(day)` fires at dawn, before `phase_changed`, so
-  a listener that cares only about new days never has to test the flag.
-  `phase_changed(is_night, day)` fires at both ends.
-- **The light.** `light_colour()` returns what the world is tinted with, and
-  `main.gd` copies it into a `CanvasModulate` once a frame. The modulate is a
-  child of `Main`, so it colours the *world* canvas layer and leaves every UI
-  layer alone -- the resource bar stays readable at midnight. The tint is
-  always **opaque**: a CanvasModulate multiplies alpha too, so a tint with
-  alpha below 1 would make the world translucent rather than dark. **Both
-  twilights
-  belong to the night**: dusk is its first 6 s and dawn its last. Days are
-  therefore always fully lit, including the first one, where the player is
-  still placing their base, and the light is continuous across both boundaries
-  because the night begins and ends at zero darkness.
-- **Night behaviour** lives in `UnitSystem`, not in the director: `main.gd`
-  sets `units.night` and calls `on_night_started()` / `on_day_started()`.
-  Everyone walks home and waits inside, with one exception -- **builders still
-  take REPAIR jobs**, which means standing in the open to do it. That is the
-  intended risk once enemies exist. Carriers leave drops where they lie until
-  dawn. The commuting first miner is released from its mine at dusk,
-  *remembers which mine it was*, and is sent back at dawn unless the player
-  gave it another one meanwhile or its mine is gone.
-- **Mines stand idle at night.** `_gather` returns immediately while `night`
-  is set, so a miner who moves into a house *after* dusk sleeps there and
-  produces nothing until dawn. Part-finished work is kept, so a night costs
-  exactly the night and not the progress before it.
-- **Autosave at dawn.** `day_started` calls `save_run()`. A lost run therefore
-  costs at most one day, and the day boundary is the one moment when nobody is
-  mid-job.
-- **The day bar** (`UI/day_bar.gd`) sits under the resource bar: day number,
-  sun or moon, and a bar that *drains* as the phase runs out. It polls the
-  director once a frame rather than listening for a signal, because the bar
-  moves every frame anyway; the text is only rewritten when it changes.
-- **Death.** The base falling is the end of the run. `main.gd` hears
-  `level.building_removed` for type `base`, pauses the clock under its own
-  reason `game_over` (never popped), deletes the run save, updates the profile
-  (`runs_ended`, `best_day`, `total_ticks`) and shows `UI/run_summary.gd` over
-  the frozen world: days survived, time, workers, resources, best day, and one
-  **Return to title** button. `_run_over` makes `save_run()` a no-op afterwards,
-  so quitting from the summary cannot write the dead run back over the deletion.
-- **The building glow** (`buildings/building_glow.gd`) is a faint warm halo
-  over every *finished player* building, so the base and the houses stay
-  readable once the world goes dark. Trees, stumps and mines do not glow:
-  `get_building_data` returning non-null is exactly the test for "the player
-  built this". One `MultiMeshInstance2D`, one draw call however many buildings
-  stand (D2); the instance list is rebuilt only when buildings change, and the
-  per-frame work is one `modulate`. The falloff texture is generated in code,
-  so the halo needs no art.
-  The halo blends **additively** onto a canvas the CanvasModulate has already
-  darkened -- and a CanvasModulate multiplies everything on its layer, the halo
-  included -- so `set_night` divides the halo's colour by the tint. Without
-  that, the glow would be dimmed by exactly the darkness it exists to fight,
-  and changing `night_light` would silently change the glow with it. It sits
-  above the ground and the buildings it lights, below the units.
-- **Tuning** lives on `RunDirector` itself: `day_seconds`, `night_seconds`,
-  `twilight_seconds`, `night_light`, `night_colour`; the halo's warmth, size
-  and strength are exports on `BuildingGlow`.
-- **Dev shortcuts:** Ctrl+T skips to the end of the current phase, Ctrl+K
-  destroys the base (both debug-only, per the key-bindings rules).
-
 ### Planned: Stage 3b
 
 **Fog of war (3b).** A `WorldGrid` layer, one byte per tile. Units reveal a
@@ -963,8 +886,7 @@ one key in `main.gd.save_run()`, never touching the autoload.
 
 ### What a run save holds, and load order
 
-    level, clock, economy, roster, shop, modifiers, units,
-    unlocks, inventory, forest, lava, director
+    level, clock, economy, roster, shop, modifiers, units
 
 Load order is load-bearing: **shop purchases before modifiers**, because
 rebuilding an upgrade's modifiers reads its level from the purchase count; and
@@ -1035,14 +957,9 @@ support: saves carry plain data only, never objects.
 
 ### Autosave
 
-At **dawn**, and nowhere else (Stage 3). Saving mid-combat with hundreds of
-entities is a frame hitch, and the day boundary is the natural checkpoint: a
-lost run costs at most one day, and nobody is mid-job. `RunDirector.day_started`
-calls `main.gd.save_run()`.
-
-When the base falls the run save is **deleted**, not written: `main.gd` sets
-`_run_over`, which makes every later `save_run()` a no-op, so quitting from the
-run summary cannot resurrect a dead run.
+Not implemented yet, deliberately. Saving mid-combat with hundreds of entities
+is a frame hitch, and the natural checkpoint is a day boundary, which needs
+`RunDirector` (Stage 3). `save_run()` is ready to be called from there.
 
 ## 10. Performance budget
 

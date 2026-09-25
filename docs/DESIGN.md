@@ -57,7 +57,8 @@ pattern: craft the tool, reshape the map, reach the resource.
   walks out and mines outside it — visible and unprotected. When the first
   miner house is built it moves in; it also moves into any miner house it is
   sent to that has a free bed. If its house is destroyed, it flees to the
-  base and commutes again. (Later, with day/night, it walks home at night.)
+  base and commutes again. At night it walks home to the base and goes back
+  to the same mine at dawn.
 - Blueprints known: **bucket**, **depot**, **builder house**, **carrier
   house**, **miner house**.
 
@@ -122,6 +123,31 @@ Sales work in both sections (a SHOP_PRICE modifier, already built).
   Until then, priorities are fixed: build > repair > cobble > chop.
 - **Depot** is the first craftable building: carriers deliver to the nearest
   depot instead of walking all the way to the base.
+
+## Day and night (decided)
+
+- A run is measured in **days**. **120 seconds of day, 60 seconds of night**
+  (simulation time, so the cycle pauses and speeds up with the game). The run
+  starts at dawn of day 1; the day number goes up at each dawn.
+- **The world darkens at night**, easing in at dusk and out at dawn. The UI
+  does not darken. Finished player buildings carry a **faint warm glow** so
+  they stay readable in the dark; trees and mines do not.
+- **At night everyone goes home** — except **builders, who still repair**.
+  Repairing means leaving the house while enemies are out, which is the point:
+  it is a risk the player chooses to take. Carriers leave dropped resources
+  where they lie until morning, and **mines stand idle** — a miner sent to a
+  mine after dusk moves in and sleeps, and produces nothing until dawn.
+- **Waves come at night** and get stronger with the day number (Stage 4).
+- The game **autosaves at dawn**.
+
+## The end of a run (decided)
+
+- The run ends when **the base is destroyed**. Nothing else ends it.
+- Time stops, the run save is deleted, and a **summary** appears over the
+  frozen world: days survived, time, workers, resources, and the best day
+  reached across all runs. One button: **Return to title**.
+- The permanent profile keeps `runs_started`, `runs_ended`, `best_day` and
+  total time played. Meta currency joins it later (Stage 8).
 
 ## Exploration (decided)
 
