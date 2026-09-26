@@ -41,6 +41,10 @@ var lava: LavaWorks
 var pois: PointsOfInterest
 ## The shovel's marks (Stage 5 fixes). Optional: without it, nothing is dug.
 var demolition: Demolition
+## Road, bridge and crossing plans (Stage 6). Optional, like the rest.
+var tools: BuildTools
+var _grid_origin := Vector2.ZERO
+var _inv_tile := 1.0 / 32.0
 var economy: Economy
 var modifiers: ModifierSet
 ## "miner" / "builder" / "carrier" -> StatBlock, one per type (D7).
@@ -90,6 +94,8 @@ func setup(p_level: LevelGenerator, p_economy: Economy, p_modifiers: ModifierSet
 	board.set_provider(JobBoard.Kind.COBBLE, _cobble_tiles)
 	board.set_provider(JobBoard.Kind.FILL, _fill_tiles)
 	board.set_provider(JobBoard.Kind.DIG, _dig_jobs)
+	board.set_provider(JobBoard.Kind.PAVE, _pave_jobs)
+	board.set_position_lookup(_tile_pos, JobBoard.Kind.PAVE)
 	board.set_position_lookup(_tile_pos, JobBoard.Kind.COBBLE)
 	board.set_position_lookup(_tile_pos, JobBoard.Kind.FILL)
 	board.set_position_lookup(_building_pos)
@@ -97,6 +103,9 @@ func setup(p_level: LevelGenerator, p_economy: Economy, p_modifiers: ModifierSet
 
 func _on_level_generated() -> void:
 	pathing.rebuild(level.grid)
+	var tile := float(level.ground_layer.tile_set.tile_size.x)
+	_inv_tile = 1.0 / tile
+	_grid_origin = level.cell_to_world(Vector2i.ZERO) - Vector2(tile, tile) / 2.0
 
 
 func clear() -> void:
@@ -555,11 +564,24 @@ func _think(id: int) -> void:
 				_go_home_if_away(id)
 
 
+## True if this point is on a road tile. Arithmetic, not world_to_cell (two
+## engine calls): every walking unit asks this every tick.
+func _on_road(p: Vector2) -> bool:
+	var g := level.grid
+	var cx := floori((p.x - _grid_origin.x) * _inv_tile)
+	var cy := floori((p.y - _grid_origin.y) * _inv_tile)
+	if cx < 0 or cy < 0 or cx >= g.size.x or cy >= g.size.y:
+		return false
+	return (g.blocking[cy * g.size.x + cx] & WorldGrid.IS_ROAD) != 0
+
+
 func _move(id: int, dt: float) -> void:
 	var points: PackedVector2Array = store.path[id]
 	var i: int = store.path_i[id]
 	var p: Vector2 = store.pos[id]
 	var remaining := _stat(store.kind[id], Stats.Id.MOVE_SPEED) * dt
+	if _on_road(p):
+		remaining *= WorldGrid.ROAD_SPEED   # roads (Stage 6)
 	while remaining > 0.0 and i < points.size():
 		var to := points[i]
 		var d := p.distance_to(to)
@@ -690,7 +712,10 @@ func _work(id: int, dt: float) -> void:
 func _work_tile(id: int, dt: float) -> void:
 	var i: int = store.target[id]
 	var work := _stat(WorkerRoster.Kind.BUILDER, Stats.Id.BUILD_SPEED) * dt
-	if lava == null:
+	if store.job[id] == JobBoard.Kind.PAVE:
+		if tools == null or tools.pave(i, work) or not tools.plans().has(i):
+			_stop_working(id)   # built, or unpainted meanwhile
+	elif lava == null:
 		_stop_working(id)
 	elif store.job[id] == JobBoard.Kind.COBBLE:
 		if not lava.is_marked(i) or not lava.has_water_bucket() or lava.cobble(i, work):
@@ -752,6 +777,10 @@ func _construction_sites() -> PackedInt32Array:
 ## Marked for the shovel: not built on, not repaired.
 func _to_dig(b: int) -> bool:
 	return demolition != null and demolition.is_marked(b)
+
+
+func _pave_jobs() -> PackedInt32Array:
+	return tools.jobs() if tools != null else PackedInt32Array()
 
 
 func _dig_jobs() -> PackedInt32Array:

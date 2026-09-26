@@ -137,6 +137,10 @@ var base_cell := INVALID_CELL
 var used_seed := 0
 ## Centre of the start clearing: where the camera opens a new run.
 var start_cell := INVALID_CELL
+## Gates (Stage 6) are open by day, closed at night. Closed, enemies must
+## break them; open, they walk through. Workers always pass. Set through
+## set_gates_open(), which tells the flow fields.
+var gates_open := true
 
 var _rng := RandomNumberGenerator.new()
 var _source_ids := {}
@@ -184,6 +188,8 @@ func get_save_data() -> Dictionary:
 		"buildings": store.to_save_data(),
 		# Mostly long runs of 0 and 255, so it compresses to almost nothing.
 		"explored": grid.explored.compress(FileAccess.COMPRESSION_DEFLATE),
+		# Roads, bridges, crossings (Stage 6): mostly zeros, like the fog.
+		"overlay": grid.overlay.compress(FileAccess.COMPRESSION_DEFLATE),
 		"start_cell": start_cell,
 	}
 
@@ -214,6 +220,12 @@ func load_save_data(data: Dictionary) -> bool:
 			FileAccess.COMPRESSION_DEFLATE)
 		if fog.size() == grid.tile_count():
 			grid.explored = fog
+	if data.has("overlay"):
+		var over := PackedByteArray(data["overlay"]).decompress(grid.tile_count(),
+			FileAccess.COMPRESSION_DEFLATE)
+		if over.size() == grid.tile_count():
+			grid.overlay = over
+			grid.rebuild_derived()
 
 	var saved: Dictionary = data["buildings"]
 	var types: PackedStringArray = saved["types"]
@@ -369,6 +381,20 @@ func set_ground_runtime(cell: Vector2i, g: int) -> void:
 		return
 	grid.set_ground(cell, g)
 	ground_layer.set_cell(cell, _source_ids[g], Vector2i.ZERO)
+
+
+## Opens or closes every gate (dawn / dusk). The tiles are re-announced, so the
+## enemy flow fields pick the change up.
+func set_gates_open(open: bool) -> void:
+	if open == gates_open:
+		return
+	gates_open = open
+	var tiles := PackedInt32Array()
+	for b in store.alive_ids():
+		var data := get_building_data(store.get_type(b))
+		if data != null and data.is_gate:
+			tiles.append(grid.index(store.get_cell(b)))
+	grid.touch(tiles)
 
 
 ## Adds a generated 1x1 feature (tree, stump...) on a free tile at runtime.

@@ -39,7 +39,14 @@ const NO_OCCUPANT := -1
 const COST_IMPASSABLE := 255
 const COST_OPEN := 10
 const COST_ROUGH := 14
-const COST_ROAD := 4
+## Roads (Stage 6): workers walk ROAD_SPEED times faster on them, so pathing
+## weighs a road tile at COST_OPEN / ROAD_SPEED.
+const COST_ROAD := 6
+const ROAD_SPEED := 1.6
+
+## What is built on top of the ground (Stage 6). One per tile. Enemies ignore
+## roads; bridges and crossings make water and void walkable for everyone.
+enum Overlay { NONE, ROAD, BRIDGE, CROSSING }
 
 ## Terrain rules. Water, void and lava block movement: reaching the copper,
 ## quartz and gold mines is meant to require boats, bridges and (eventually)
@@ -88,6 +95,8 @@ var cost := PackedByteArray()
 ## LevelGenerator.generate() fogs a map, so hand-built maps (tests, and any
 ## future authored map) are visible unless they ask otherwise.
 var explored := PackedByteArray()
+## Overlay per tile (Overlay enum). Saved with the level.
+var overlay := PackedByteArray()
 
 ## The occupant's own contribution, stored rather than recomputed so that
 ## changing terrain under a building, or a building over terrain, gives the same
@@ -117,6 +126,7 @@ func resize(map_size: Vector2i) -> void:
 	_occupant_blocking.resize(n); _occupant_blocking.fill(0)
 	_occupant_cost.resize(n); _occupant_cost.fill(0)
 	explored.resize(n); explored.fill(EXPLORED)
+	overlay.resize(n); overlay.fill(Overlay.NONE)
 
 
 func tile_count() -> int:
@@ -257,15 +267,53 @@ func reveal_circle(center: Vector2i, radius: int) -> PackedInt32Array:
 
 # --- Derivation ---------------------------------------------------------------
 
-## Recomputes the derived layers for one tile from its two inputs.
+## The ground's own flags, as the overlay changes them: a bridge or crossing
+## makes its tile walkable, a road marks it IS_ROAD.
+func ground_blocking_at(i: int) -> int:
+	var flags := int(GROUND_BLOCKING[ground[i]])
+	match overlay[i]:
+		Overlay.BRIDGE, Overlay.CROSSING:
+			flags &= ~BLOCKS_UNIT
+		Overlay.ROAD:
+			flags |= IS_ROAD
+	return flags
+
+
+## The ground's walking cost, as the overlay changes it.
+func ground_cost_at(i: int) -> int:
+	match overlay[i]:
+		Overlay.ROAD:
+			return COST_ROAD
+		Overlay.BRIDGE, Overlay.CROSSING:
+			return COST_OPEN
+	return int(GROUND_COST[ground[i]])
+
+
+func get_overlay(cell: Vector2i) -> int:
+	return overlay[cell.y * size.x + cell.x]
+
+
+func set_overlay_at(i: int, value: int) -> void:
+	overlay[i] = value
+	_derive(i)
+	_announce(i)
+
+
+## Tells every listener these tiles changed although no layer here did (a
+## gate opening changes what enemies make of it).
+func touch(indices: PackedInt32Array) -> void:
+	if notify and not indices.is_empty():
+		tiles_changed.emit(indices)
+
+
+## Recomputes the derived layers for one tile from its inputs.
 func _derive(i: int) -> void:
-	var g: int = ground[i]
-	blocking[i] = int(GROUND_BLOCKING[g]) | _occupant_blocking[i]
+	blocking[i] = ground_blocking_at(i) | _occupant_blocking[i]
 	var occ_cost := _occupant_cost[i]
 	if occ_cost > 0:
 		cost[i] = occ_cost
 	else:
-		cost[i] = int(GROUND_COST[g])
+		cost[i] = ground_cost_at(i)
 	# A tile nothing can walk onto is impassable regardless of its cost number.
 	if (blocking[i] & BLOCKS_UNIT) != 0:
 		cost[i] = COST_IMPASSABLE

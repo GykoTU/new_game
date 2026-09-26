@@ -29,6 +29,16 @@ extends Resource
 @export var threat_priority := 2.0
 ## Set for weapon buildings (Stage 5): what it fires. Null for everything else.
 @export var weapon: WeaponData
+## What an enemy's flow field charges for smashing through it, in tenths of
+## a tile of walking (FlowFields). Lower = a preferred breach. Walls 250,
+## gates 200. Must stay within FlowFields.BREAK_MIN..255.
+@export_range(150, 255) var break_cost := 250
+## Gets the night halo (BuildingGlow). Walls do not: a wall line lit tile by
+## tile turns into one bright band; the gate keeps its light, marking the way in.
+@export var glows := true
+## A gate (Stage 6): workers walk through it; enemies too while it is open
+## (by day), and must break it while it is closed (at night).
+@export var is_gate := false
 ## Tiles of fog cleared around it, once, when it is finished. 0 = none.
 ## The watchtower's whole job; any building can have one.
 @export var reveal_radius := 0

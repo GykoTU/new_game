@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="ShopItemData" format=3]
+[gd_resource type="Resource" script_class="ShopItemData" format=3 uid="uid://d3ka30bnv4g6w"]
 
-[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
-[ext_resource type="Script" path="res://stats/stat_modifier.gd" id="2_mod"]
+[ext_resource type="Script" uid="uid://bqxpvf2yq48p1" path="res://economy/shop_item_data.gd" id="1_item"]
+[ext_resource type="Script" uid="uid://d2j3ht3ek7i7u" path="res://stats/stat_modifier.gd" id="2_mod"]
 
 [sub_resource type="Resource" id="Mod_0"]
 script = ExtResource("2_mod")
@@ -16,12 +16,10 @@ id = "arrow_pierce"
 display_name = "Sharper Arrows"
 description = "+1 enemy pierced per level."
 icon_path = "res://assets/buildings/weapons/arrow_tower.png"
-kind = 1
 section = 2
 blueprint = "blueprint:arrow_pierce"
-rarity = 0
-upgrade_group = 0
 requires = "blueprint:arrow_tower"
+upgrade_group = 0
 tags = PackedStringArray("weapon", "arrow_tower")
 base_cost = Dictionary[int, int]({
 5: 15

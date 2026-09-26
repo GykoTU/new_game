@@ -8,9 +8,13 @@ extends RefCounted
 ##   0          impassable -- water, lava, void (ground only), and trees, mines,
 ##              stumps and points of interest (enemies walk around those)
 ##   10 / 14    open or rough ground (flyers: 10 everywhere)
-##   BREAK_COST a player building: passable only by smashing it
+##   BREAK_MIN.. a player building: passable only by smashing it. Each
+##   255        building type sets its own (BuildingData.break_cost): walls 250,
+##              gates 200, so a gate is the preferred breach. An OPEN gate
+##              (by day) costs its ground: enemies walk through.
 ## so an enemy goes around your buildings when it reasonably can, and through
-## them when they wall its target in.
+## them -- at the cheapest point -- when they wall its target in. Roads are
+## ignored (the ground's own cost); bridges and crossings are walkable.
 ##
 ## A grid change marks every field dirty; each rebuilds in slices from
 ## advance(), sharing one budget, while enemies keep the old directions.
@@ -21,6 +25,8 @@ const SLOTS := 8
 ## through it. Breaking is slow (a house takes a goblin ~15 s), and this cost is
 ## what that time is worth in walking. Must stay below 256: a byte.
 const BREAK_COST := 250
+## Any cost at or above this is a building to break, not ground to walk.
+const BREAK_MIN := 150
 ## Fields nobody has planned with for this long are dropped when a slot is needed.
 const IDLE_TICKS := 180
 
@@ -45,6 +51,7 @@ func setup(p_level: LevelGenerator) -> void:
 	# long as the level: resize() reuses it.
 	level.level_generated.connect(_on_level_generated)
 	level.grid.tiles_changed.connect(_on_tiles_changed)
+	level.construction_completed.connect(_on_construction_completed)
 
 
 func clear() -> void:
@@ -75,21 +82,49 @@ func _on_tiles_changed(indices: PackedInt32Array) -> void:
 			_start(f)
 
 
+## A finished gate is open by day: its tiles cost something new.
+func _on_construction_completed(id: int) -> void:
+	var data := level.get_building_data(level.store.get_type(id))
+	if data == null or not data.is_gate:
+		return
+	var o := level.store.get_cell(id)
+	var sz := level.store.get_size(id)
+	var tiles := PackedInt32Array()
+	for y in sz.y:
+		for x in sz.x:
+			tiles.append(level.grid.index(o + Vector2i(x, y)))
+	_on_tiles_changed(tiles)
+
+
 func _derive(i: int) -> void:
 	var g := level.grid
 	var occ := g.occupancy[i]
 	if occ != WorldGrid.NO_OCCUPANT:
-		var player := level.get_building_data(level.store.get_type(occ)) != null
-		var c := BREAK_COST if player else 0
+		var data := level.get_building_data(level.store.get_type(occ))
+		var c := 0
+		if data != null:
+			c = clampi(data.break_cost, BREAK_MIN, 255)
+			if data.is_gate and level.gates_open and level.store.is_complete(occ):
+				_derive_ground(i)   # an open gate: walk through
+				return
 		cost_ground[i] = c
 		cost_fly[i] = c
 		return
+	_derive_ground(i)
+
+
+## Ground only: roads cost their ground (enemies ignore them); bridges and
+## crossings make water and void walkable.
+func _derive_ground(i: int) -> void:
+	var g := level.grid
 	var ground: int = g.ground[i]
 	cost_fly[i] = 10
-	if (int(WorldGrid.GROUND_BLOCKING[ground]) & WorldGrid.BLOCKS_UNIT) != 0:
+	if (g.ground_blocking_at(i) & WorldGrid.BLOCKS_UNIT) != 0:
 		cost_ground[i] = 0
-	else:
+	elif g.overlay[i] == WorldGrid.Overlay.ROAD:
 		cost_ground[i] = int(WorldGrid.GROUND_COST[ground])
+	else:
+		cost_ground[i] = g.ground_cost_at(i)
 
 
 func costs(flying: bool) -> PackedByteArray:

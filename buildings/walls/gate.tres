@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" format=3]
+
+[ext_resource type="Script" path="res://buildings/building_data.gd" id="1_bd"]
+
+[resource]
+script = ExtResource("1_bd")
+id = "gate"
+display_name = "Gate"
+texture_path = "res://assets/buildings/walls/gate_open.png"
+max_health = 150.0
+build_work = 2.5
+tags = PackedStringArray("building", "wall", "gate")
+threat_priority = 1.0
+break_cost = 200
+is_gate = true
+blocks_units = false
+blocks_projectiles = true
+allowed_grounds = 671

@@ -45,8 +45,9 @@ and a new tree grows later on a random grass tile. **Fruit is left out for
 now** — fruit trees are scenery, and may return as a special-fruit point of
 interest.
 
-Later traversal unlocks — boats over water, bridges over void — follow the same
-pattern: craft the tool, reshape the map, reach the resource.
+Later traversal unlocks follow the same pattern — find the blueprint, reshape
+the map, reach the resource: **bridges** over water (to copper) and **void
+crossings** (which cost copper, to quartz), both findable blueprints.
 
 ## Starting state of a run (decided)
 
@@ -204,6 +205,22 @@ Sales work in both sections (a SHOP_PRICE modifier, already built).
   outside. Where weapons stand, and where workers walk at night, matters.
 - **Walls** (Stage 6) will stop shots and shield from blasts; a flung enemy
   that hits a wall is hurt.
+
+## Walls, gates and roads (decided)
+
+- **Walls** and **roads** are known from the start; **bridges** (over water)
+  and **void crossings** are found. All four are tools in a bar in the
+  bottom-right corner: drag to paint, each tile is paid at once, and builders
+  build them. Start a stroke on something not yet built to take it back.
+- **Walls** stop enemies, workers and shots. Enemies never target a wall, but
+  break through one when it's in their way.
+- **Gates** (hold Shift while painting walls) let your workers through, day
+  and night. By day they are open; at night they close and enemies must break
+  them. A gate is the **weak point**: half a wall's health, and enemies go a
+  few tiles out of their way to attack it rather than a wall.
+- **You may seal your base in completely.** Without a gate, your workers
+  can't get out either.
+- **Roads** make your workers walk faster (1.6x). Enemies ignore them.
 
 ## The end of a run (decided)
 

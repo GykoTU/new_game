@@ -413,14 +413,14 @@ func _move(e: int, p: Vector2, delta: Vector2, flying: bool, imp: Vector2) -> vo
 
 ## Solid for this way of moving: impassable ground or any building at all.
 ## Read from the enemy cost layer, which already folds both in: 0 is
-## impassable, BREAK_COST is a building (broken, never walked through).
+## impassable, BREAK_MIN and up is a building (broken, never walked through).
 func _solid(p: Vector2, costs: PackedByteArray) -> bool:
 	var cx := floori((p.x - _origin.x) * _inv_tile)
 	var cy := floori((p.y - _origin.y) * _inv_tile)
 	if cx < 0 or cy < 0 or cx >= _w or cy >= _h:
 		return true
 	var c := costs[cy * _w + cx]
-	return c == 0 or c == FlowFields.BREAK_COST
+	return c == 0 or c >= FlowFields.BREAK_MIN
 
 
 ## Chooses the next tile to step to (and the point to walk at), or the
@@ -470,7 +470,7 @@ func _plan(e: int) -> void:
 	if best == t:
 		waypoint[e] = _building_center(aim)   # nowhere closer (cut off): straight at it
 		return
-	if costs[best] == FlowFields.BREAK_COST:
+	if costs[best] >= FlowFields.BREAK_MIN:
 		var occ := level.grid.occupancy[best]
 		if level.store.is_alive(occ):
 			hitting[e] = occ   # a player building in the way: break through

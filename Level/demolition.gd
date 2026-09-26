@@ -82,6 +82,11 @@ func marked() -> PackedInt32Array:
 	return out
 
 
+## For buildings not crafted in the shop (walls and gates are painted).
+func set_refund(type: String, back: Dictionary) -> void:
+	_refunds[type] = back
+
+
 func refund_of(type: String) -> Dictionary:
 	return _refunds.get(type, {})
 

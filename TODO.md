@@ -238,10 +238,21 @@ First loop the player can actually watch happen.
 
 ## Stage 6 — Walls, roads, expansion
 
-- [ ] Wall building: blocks units and projectiles, has health
-- [ ] Placement rule preventing a fully sealed base
-- [ ] Roads: cheaper movement cost for friendly units
-- [ ] Bridges over water, crossings over void
+- [x] Wall building: blocks units and projectiles, has health (300)
+- [x] ~~Placement rule preventing a fully sealed base~~ dropped: sealing is
+      allowed; the gate is the way in and out
+- [x] Gate: workers pass always, enemies only by day; weak point (150
+      health, break cost 200 vs 250), slightly higher threat than walls
+- [x] Painted walls, gates (Shift), roads, bridges, crossings; paid per tile,
+      built by builders; unpaint refunds
+- [x] Roads: workers walk 1.6x faster; enemies ignore them
+- [x] Bridges over water, crossings over void (findable blueprints)
+- [x] Connecting wall and overlay sheets (16 frames by neighbours)
+- [x] Walls do not glow at night; gates do
+- [ ] Balancing: wall / gate health and prices, road speed, the ~5-tile
+      gate preference
+- [ ] Removing built roads, bridges and crossings (the shovel only digs
+      buildings today)
 
 ## Stage 7 — Progression
 
@@ -339,6 +350,20 @@ Full paths, 32x32 unless stated. Ticked = the file exists.
       enemies; without it, three circling dots
 - [ ] `assets/ui/tab_weapons.png`, `assets/ui/tab_workers.png`,
       `assets/ui/tab_utility.png` — optional 16x16 icons for the sub-tabs
+
+**6** (all have stand-ins)
+- [ ] `assets/buildings/walls/wall.png` — 32x32
+- [ ] `assets/buildings/walls/wall_sheet.png` — 512x32, 16 frames; frame =
+      neighbours that are walls or gates, N=1 E=2 S=4 W=8
+- [ ] `assets/buildings/walls/gate_open.png`, `gate_closed.png` — 32x32, in a
+      horizontal wall
+- [ ] `assets/buildings/walls/gate_open_v.png`, `gate_closed_v.png` — optional,
+      in a vertical wall; without them the horizontal ones are turned
+- [ ] `assets/ground/road.png`, `bridge.png`, `crossing.png` — 32x32
+- [ ] `assets/ground/road_sheet.png`, `bridge_sheet.png`, `crossing_sheet.png`
+      — optional 512x32 connecting sheets, same frame rule
+- [ ] `assets/ui/tool_wall.png`, `tool_road.png`, `tool_bridge.png`,
+      `tool_crossing.png` — optional 32x32 tool-bar icons
 
 **3b**
 - [x] `assets/npcs/explorer.png` — or a horizontal strip of 32x32 frames

@@ -106,6 +106,13 @@ var demolition := Demolition.new()
 var dig_marks: DigMarks
 ## Grey and blue glows round dropped blueprints.
 var cache_halos: CacheHalos
+## Stage 6: walls, gates, roads, bridges, crossings.
+var build_tools := BuildTools.new()
+var wall_tiles := WallTiles.new()
+var overlay_renderer: OverlayRenderer
+var tool_bar
+var _tool := -1          # BuildTools.Tool while a paint tool is in hand
+var _paint_gate := false  # this stroke paints gates (Shift at its start)
 ## Which item is being painted with: the water bucket (lava) or the shovel.
 var _paint_tool := ""
 ## The weapon building whose panel is open, or -1.
@@ -170,6 +177,14 @@ func _ready() -> void:
 	demolition.setup(level, economy, shop_catalogue)
 	units.demolition = demolition
 	demolition.dug.connect(_on_dug)
+	# Walls and gates are painted, not crafted: half the paint price back.
+	for key in ["wall", "gate"]:
+		var back := {}
+		var price := BuildTools.price_of(key)
+		for k in price:
+			if floori(price[k] * 0.5) > 0:
+				back[k] = floori(price[k] * 0.5)
+		demolition.set_refund(key, back)
 	enemies.blueprint_dropped.connect(_on_blueprint_dropped)
 	waves.night_planned.connect(_on_night_planned)
 	units.unit_killed.connect(_on_unit_killed)
@@ -182,6 +197,19 @@ func _ready() -> void:
 	_add_ui(item_bar)
 	item_bar.bind(unlocks)
 	item_bar.item_pressed.connect(_on_item_pressed)
+	tool_bar = preload("res://UI/item_bar.gd").new()
+	tool_bar.name = "ToolBar"
+	tool_bar.tools = true
+	_add_ui(tool_bar)
+	tool_bar.bind(unlocks)
+	tool_bar.item_pressed.connect(_on_item_pressed)
+	build_tools.setup(level, economy)
+	units.tools = build_tools
+	wall_tiles.bind(level)
+	overlay_renderer = OverlayRenderer.new()
+	overlay_renderer.name = "Overlays"
+	level.add_child(overlay_renderer)
+	overlay_renderer.bind(level, build_tools)
 	day_bar = preload("res://UI/day_bar.gd").new()
 	day_bar.name = "DayBar"
 	_add_ui(day_bar)
@@ -360,6 +388,7 @@ func _start_new_run() -> void:
 	clock.pop_pause(PAUSE_GAME_OVER)
 	director.reset()
 	units.night = false
+	_set_gates(false)
 	units.clear()
 	enemies.clear()
 	defence.clear()
@@ -420,6 +449,8 @@ func _load_run(save: Dictionary) -> bool:
 	waves.load_save_data(save.get("waves", {}))
 	director.load_save_data(save.get("director", {}))
 	units.night = director.is_night
+	build_tools.load_save_data(save.get("build_tools", {}))
+	_set_gates(director.is_night)
 	if save.has("clock"):
 		clock.load_save_data(save["clock"])
 	var focus := level.base_cell if level.base_cell != LevelGenerator.INVALID_CELL else level.start_cell
@@ -453,6 +484,7 @@ func save_run() -> void:
 		"waves": waves.get_save_data(),
 		"weapons": weapons.get_save_data(),
 		"demolition": demolition.get_save_data(),
+		"build_tools": build_tools.get_save_data(),
 		# progression joins this as it is built. SaveManager neither knows nor
 		# cares what these keys mean.
 	})
@@ -488,6 +520,7 @@ func _on_day_started(day: int) -> void:
 
 
 func _on_phase_changed(is_night: bool, day: int) -> void:
+	_set_gates(is_night)
 	if is_night:
 		units.on_night_started()
 		waves.start_night(day, clock.tick_count)   # toasts through _on_night_planned
@@ -599,6 +632,8 @@ func _referenced_art() -> Array:
 	paths.append_array(ProjectileRenderer.art_paths(weapons.types))
 	paths.append_array(WeaponEffects.art_paths())
 	paths.append(DigMarks.MARK)
+	paths.append_array(WallTiles.art_paths())
+	paths.append_array(OverlayRenderer.art_paths())
 	paths.append_array(preload("res://UI/shop_ui.gd").art_paths())
 	for data in level.placeable_buildings:
 		if data != null and data.texture == null:
@@ -730,7 +765,17 @@ func _on_item_pressed(id: String) -> void:
 		return
 	_end_dispatch()
 	var cancel := Keybinds.describe_action("cancel_placement")
-	if id == Demolition.ITEM:
+	var tool: int = BuildTools.BLUEPRINTS.find_key(id) if BuildTools.BLUEPRINTS.values().has(id) else -1
+	if tool != -1:
+		_tool = tool
+		_paint_tool = "tool"
+		var stage: Array = []
+		for stages in tool_bar.TOOLS:
+			if stages[0][0] == id:
+				stage = stages[0]
+		build_placer.start_paint(tool_bar.icon_of(stage), _can_tool_cell)
+		toast.show_message("%s  %s: done." % [stage[3], cancel], 5.0)
+	elif id == Demolition.ITEM:
 		_paint_tool = "shovel"
 		build_placer.start_paint("res://assets/ui/shovel.png", _can_dig_cell)
 		toast.show_message("Click buildings to mark them for digging out.  %s: done." % cancel, 4.0)
@@ -760,6 +805,24 @@ func _on_tile_picked(cell: Vector2i) -> void:
 		toast.show_message("A builder will fill the bucket here.", 2.0)
 
 
+## Gates open by day, close at night: for the enemies' flow fields and the
+## gate pictures.
+func _set_gates(night: bool) -> void:
+	level.set_gates_open(not night)
+	wall_tiles.set_night(night)
+
+
+## A tile the tool in hand can paint (or unpaint). Shift: gates.
+func _can_tool_cell(cell: Vector2i) -> bool:
+	return build_tools.can_paint(_tool, cell, Input.is_key_pressed(KEY_SHIFT))
+
+
+func _tool_paint(cell: Vector2i) -> void:
+	var why := build_tools.paint(_tool, cell, _paint_gate)
+	if why != "" and why != "skip":
+		toast.show_message(why, 2.0)
+
+
 ## A building the shovel can mark (or unmark).
 func _can_dig_cell(cell: Vector2i) -> bool:
 	return level.grid.in_bounds(cell) and fog.is_explored(cell) \
@@ -781,6 +844,15 @@ func _on_paint_started(cell: Vector2i) -> void:
 			demolition.set_mark(b, _paint_on)
 		_paint_last = cell
 		return
+	if _paint_tool == "tool":
+		_paint_gate = Input.is_key_pressed(KEY_SHIFT)
+		_paint_on = not build_tools.is_planned(_tool, cell, _paint_gate)
+		if _paint_on:
+			_tool_paint(cell)
+		else:
+			build_tools.unpaint(_tool, cell)
+		_paint_last = cell
+		return
 	var i := level.grid.index(cell)
 	_paint_on = not lava.is_marked(i)
 	_paint_last = cell
@@ -800,6 +872,11 @@ func _on_paint_moved(cell: Vector2i) -> void:
 			continue
 		if _paint_tool == "shovel":
 			demolition.set_mark(level.grid.get_occupant(c), _paint_on)
+		elif _paint_tool == "tool":
+			if _paint_on:
+				_tool_paint(c)
+			else:
+				build_tools.unpaint(_tool, c)
 		else:
 			lava.set_mark(level.grid.index(c), _paint_on)
 	_paint_last = cell

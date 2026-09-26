@@ -95,7 +95,8 @@ func _rebuild() -> void:
 	var tile := float(_level.ground_layer.tile_set.tile_size.x)
 	var ids := PackedInt32Array()
 	for b in _level.store.alive_ids():
-		if _level.store.is_complete(b) and _level.get_building_data(_level.store.get_type(b)) != null:
+		var data := _level.get_building_data(_level.store.get_type(b))
+		if _level.store.is_complete(b) and data != null and data.glows:
 			ids.append(b)
 	var mm := multimesh
 	if ids.size() > mm.instance_count:

@@ -1,7 +1,7 @@
-[gd_resource type="Resource" script_class="ShopItemData" format=3]
+[gd_resource type="Resource" script_class="ShopItemData" format=3 uid="uid://b35uopyi78dsn"]
 
-[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
-[ext_resource type="Script" path="res://stats/stat_modifier.gd" id="2_mod"]
+[ext_resource type="Script" uid="uid://bqxpvf2yq48p1" path="res://economy/shop_item_data.gd" id="1_item"]
+[ext_resource type="Script" uid="uid://d2j3ht3ek7i7u" path="res://stats/stat_modifier.gd" id="2_mod"]
 
 [sub_resource type="Resource" id="Mod_0"]
 script = ExtResource("2_mod")
@@ -16,12 +16,10 @@ id = "frost_deep"
 display_name = "Deep Freeze"
 description = "+10% slow per level."
 icon_path = "res://assets/buildings/weapons/frost_tower.png"
-kind = 1
 section = 2
 blueprint = "blueprint:frost_deep"
-rarity = 0
-upgrade_group = 0
 requires = "blueprint:frost_tower"
+upgrade_group = 0
 tags = PackedStringArray("weapon", "frost_tower")
 base_cost = Dictionary[int, int]({
 3: 6

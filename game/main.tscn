@@ -1,7 +1,7 @@
-[gd_scene load_steps=14 format=3 uid="uid://5td4ornbutf7"]
+[gd_scene format=3 uid="uid://5td4ornbutf7"]
 
 [ext_resource type="Script" uid="uid://byhj7xovxw0ym" path="res://game/main.gd" id="1_main"]
-[ext_resource type="Script" path="res://game/game_clock.gd" id="2_clock"]
+[ext_resource type="Script" uid="uid://tey1iuw3nlcx" path="res://game/game_clock.gd" id="2_clock"]
 [ext_resource type="PackedScene" uid="uid://ba1pylps5g46u" path="res://Level/level_generator.tscn" id="3_level"]
 [ext_resource type="Script" uid="uid://yd7fcx2e04nv" path="res://buildings/build_placer.gd" id="4_placer"]
 [ext_resource type="PackedScene" uid="uid://btlwwf6vbim4k" path="res://game/camera.tscn" id="5_camera"]
@@ -11,38 +11,38 @@
 [ext_resource type="PackedScene" uid="uid://xjsbgru4486i" path="res://UI/worker_ui.tscn" id="9_worker"]
 [ext_resource type="PackedScene" path="res://UI/resource_bar.tscn" id="10_rbar"]
 [ext_resource type="PackedScene" path="res://UI/stat_overlay.tscn" id="11_sov"]
-[ext_resource type="Script" path="res://units/unit_renderer.gd" id="12_urend"]
+[ext_resource type="Script" uid="uid://ds6gx8p5mwdon" path="res://units/unit_renderer.gd" id="12_urend"]
 [ext_resource type="PackedScene" path="res://UI/toast.tscn" id="13_toast"]
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node2D" unique_id=1557552900]
 script = ExtResource("1_main")
 
-[node name="GameClock" type="Node" parent="."]
+[node name="GameClock" type="Node" parent="." unique_id=1114354209]
 script = ExtResource("2_clock")
 
-[node name="Level" parent="." instance=ExtResource("3_level")]
+[node name="Level" parent="." unique_id=1579112296 instance=ExtResource("3_level")]
 
-[node name="UnitRenderer" type="Node2D" parent="."]
+[node name="UnitRenderer" type="Node2D" parent="." unique_id=405489703]
 script = ExtResource("12_urend")
 
-[node name="BuildPlacer" type="Node2D" parent="." node_paths=PackedStringArray("level")]
+[node name="BuildPlacer" type="Node2D" parent="." unique_id=672153884 node_paths=PackedStringArray("level")]
 script = ExtResource("4_placer")
 level = NodePath("../Level")
 
-[node name="Camera" parent="." instance=ExtResource("5_camera")]
+[node name="Camera" parent="." unique_id=375468590 instance=ExtResource("5_camera")]
 
-[node name="UI" type="Node" parent="."]
+[node name="UI" type="Node" parent="." unique_id=1932452439]
 
-[node name="ShopUI" parent="UI" instance=ExtResource("7_shop")]
+[node name="ShopUI" parent="UI" unique_id=437856985 instance=ExtResource("7_shop")]
 
-[node name="BuildingUI" parent="UI" instance=ExtResource("8_building")]
+[node name="BuildingUI" parent="UI" unique_id=692155481 instance=ExtResource("8_building")]
 
-[node name="WorkerUI" parent="UI" instance=ExtResource("9_worker")]
+[node name="WorkerUI" parent="UI" unique_id=2107911469 instance=ExtResource("9_worker")]
 
-[node name="ResourceBar" parent="UI" instance=ExtResource("10_rbar")]
+[node name="ResourceBar" parent="UI" unique_id=272807751 instance=ExtResource("10_rbar")]
 
-[node name="StatOverlay" parent="UI" instance=ExtResource("11_sov")]
+[node name="StatOverlay" parent="UI" unique_id=568229998 instance=ExtResource("11_sov")]
 
-[node name="Toast" parent="UI" instance=ExtResource("13_toast")]
+[node name="Toast" parent="UI" unique_id=1298947816 instance=ExtResource("13_toast")]
 
-[node name="OptionsMenu" parent="UI" instance=ExtResource("6_options")]
+[node name="OptionsMenu" parent="UI" unique_id=589282345 instance=ExtResource("6_options")]

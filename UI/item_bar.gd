@@ -26,9 +26,39 @@ const ITEMS := [
 	],
 ]
 
+## The build tools (Stage 6), in their own bar in the bottom-right corner:
+## the same slots, a second instance of this script with `tools` set.
+## A fifth entry is the picture used until the tool icon exists.
+const TOOLS := [
+	[
+		["blueprint:wall", "Walls", "res://assets/ui/tool_wall.png",
+			"Drag to paint walls (2 wood each); hold Shift for gates (5 wood). Start on an unbuilt one to take it back.",
+			"res://assets/buildings/walls/wall.png"],
+	],
+	[
+		["blueprint:road", "Roads", "res://assets/ui/tool_road.png",
+			"Drag to paint roads (1 wood each). Your workers walk faster on them; enemies do not.",
+			"res://assets/ground/road.png"],
+	],
+	[
+		["blueprint:bridge", "Bridges", "res://assets/ui/tool_bridge.png",
+			"Drag over water to paint a bridge (3 wood each). Builders build out from the shore.",
+			"res://assets/ground/bridge.png"],
+	],
+	[
+		["blueprint:crossing", "Void crossings", "res://assets/ui/tool_crossing.png",
+			"Drag over void to paint a crossing (3 wood and 1 copper each). Builders build out from the edge.",
+			"res://assets/ground/crossing.png"],
+	],
+]
+
 ## Whole multiples of 32 px: the frame at 2x, the item at 1x.
 @export var slot_size := 64
 @export var icon_size := 32
+
+## Set before adding to the tree: this bar shows the build tools, bottom
+## right, instead of the items, top left.
+var tools := false
 
 var _unlocks: Unlocks
 var _row: HBoxContainer
@@ -37,9 +67,22 @@ var _row: HBoxContainer
 func _ready() -> void:
 	_row = HBoxContainer.new()
 	_row.add_theme_constant_override("separation", 4)
-	_row.position = Vector2(8, 8)
 	_row.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_row)
+	if tools:
+		# Bottom right: anchored to the corner, growing left and up from it.
+		_row.anchor_left = 1.0
+		_row.anchor_top = 1.0
+		_row.anchor_right = 1.0
+		_row.anchor_bottom = 1.0
+		_row.offset_left = -8
+		_row.offset_top = -8
+		_row.offset_right = -8
+		_row.offset_bottom = -8
+		_row.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		_row.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	else:
+		_row.position = Vector2(8, 8)
 
 
 func bind(unlocks: Unlocks) -> void:
@@ -51,17 +94,24 @@ func bind(unlocks: Unlocks) -> void:
 ## Every stage icon, for the missing-art report.
 static func art_paths() -> Array:
 	var out := [SLOT_TEXTURE]
-	for stages in ITEMS:
+	for stages in ITEMS + TOOLS:
 		for stage in stages:
 			out.append(stage[2])
 	return out
+
+
+## The slot's icon: the tool icon, or its stand-in picture until it exists.
+static func icon_of(stage: Array) -> String:
+	if Art.exists(stage[2]) or stage.size() < 5:
+		return stage[2]
+	return stage[4]
 
 
 func refresh() -> void:
 	for c in _row.get_children():
 		_row.remove_child(c)
 		c.queue_free()
-	for stages in ITEMS:
+	for stages in (TOOLS if tools else ITEMS):
 		for stage in stages:
 			if _unlocks.has(stage[0]):
 				_row.add_child(_make_slot(stage))
@@ -85,7 +135,7 @@ func _make_slot(stage: Array) -> Control:
 	frame.mouse_entered.connect(func(): frame.modulate = Color(1.25, 1.25, 1.25))
 	frame.mouse_exited.connect(func(): frame.modulate = Color.WHITE)
 	var icon := TextureRect.new()
-	icon.texture = Art.texture(stage[2])
+	icon.texture = Art.texture(icon_of(stage))
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.set_anchors_preset(Control.PRESET_CENTER)

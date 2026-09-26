@@ -17,8 +17,6 @@ description = "+10% worker move speed per level."
 icon_path = "res://assets/ui/upgrade_boots.png"
 section = 2
 blueprint = "blueprint:boots"
-rarity = 0
-upgrade_group = 1
 tags = PackedStringArray()
 base_cost = Dictionary[int, int]({
 0: 30

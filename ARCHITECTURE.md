@@ -281,6 +281,7 @@ of magnitude more memory and lookup time than a flat array.
 | `blocking` | `PackedByteArray` | derived | `BLOCKS_UNIT`, `BLOCKS_PROJECTILE`, `IS_ROAD` |
 | `cost` | `PackedByteArray` | derived | movement cost; `255` = impassable |
 | `explored` | `PackedByteArray` | source | fog of war: `0` hidden, `255` explored (Stage 3b) |
+| `overlay` | `PackedByteArray` | source | road / bridge / crossing on top of the ground (Stage 6) |
 
 Plus two internal byte arrays holding the occupant's own contribution. Storing
 it costs two bytes per tile and buys order-independence: changing terrain under
@@ -305,8 +306,8 @@ passable but cost more than open ground.
 The table lives in `WorldGrid.GROUND_BLOCKING` and `GROUND_COST`, so changing
 which terrain blocks what is a one-line edit rather than a refactor.
 
-**Open:** whether enemies may use roads. Enemy-accessible roads turn a
-convenience into a liability, which is interesting but needs play testing.
+**Decided (Stage 6):** enemies do not use roads; roads speed up only the
+player's workers. Bridges and crossings are walkable for everyone.
 
 ### Buildings
 
@@ -1252,6 +1253,67 @@ Files: `weapons/` (`weapon_data.gd`, `weapon_system.gd`, `projectile_store.gd`,
   **Ctrl+I** toggles invincible buildings (`BuildingStore.invincible`, not
   saved).
 
+### Walls, gates, roads and bridges (implemented, Stage 6)
+
+**Diagram: [`docs/walls.svg`](docs/walls.svg)** — what a tile means to
+workers and to enemies, why enemies break a sealed base at its gate, and how
+painting works.
+
+Files: `Level/build_tools.gd`, `Level/overlay_renderer.gd`,
+`buildings/wall_tiles.gd`, `buildings/walls/wall.tres`, `gate.tres`; changes
+in `WorldGrid`, `FlowFields`, `EnemySystem`, `UnitSystem`, `JobBoard`,
+`UI/item_bar.gd` (the tool bar), `main.gd`.
+
+- **Overlay layer.** `WorldGrid.overlay`, one byte per tile: NONE, ROAD,
+  BRIDGE, CROSSING. It is a source layer like `ground` and saved with the
+  level (`overlay`, deflated). `ground_blocking_at` / `ground_cost_at` fold
+  it in: a road sets `IS_ROAD` and costs `COST_ROAD` (6); a bridge (on water)
+  or crossing (on void) removes `BLOCKS_UNIT` and costs `COST_OPEN`. The
+  ground underneath is unchanged (a bridge is still water: the bucket can
+  still be filled there).
+- **Roads are for workers only** (decided). Workers walk `ROAD_SPEED` (1.6x)
+  faster on them (`UnitSystem._on_road`, arithmetic lookup), and A* weighs
+  them at 10 / 1.6. Enemies' cost layer uses the ground's own cost. Bridges
+  and crossings are walkable for everyone.
+- **Walls** (`wall`, 300 health, blocks units and shots, threat 0: never a
+  target) and **gates** (`gate`, 150 health, threat 1, blocks shots, not
+  units). `BuildingData.break_cost` is what an enemy's flow field charges to
+  smash through: walls 250, gates 200, so a sealed base is broken at its gate
+  if that is less than ~5 tiles out of the way. `FlowFields.BREAK_MIN` (150)
+  replaces the old single `BREAK_COST` as the "this is a building" test.
+- **Gates open by day, close at night.** `LevelGenerator.set_gates_open` (from
+  `main._set_gates` at dusk, dawn, new run and load) re-announces the gate
+  tiles; `FlowFields._derive` gives an open, finished gate its ground cost
+  (enemies walk through) and a closed one its break cost. Workers always pass:
+  a gate never sets `BLOCKS_UNIT`. A gate finishing construction re-derives
+  its tiles (`construction_completed`).
+- **Sealing the base is allowed** (decided; the old "no fully sealed base"
+  placement rule is dropped). Workers inside a base with no gate are stuck;
+  that is the player's choice.
+- **Painting** (`BuildTools`). Four tools in their own bar, bottom right (a
+  second instance of `item_bar.gd` with `tools = true`), each shown once its
+  blueprint is known: walls and roads from the start, bridges and crossings
+  findable (common, `Unlocks.EXTRA_FINDABLE`). Drag like the water bucket.
+  Each tile is paid at once (`BuildTools.PRICES`: wall 2 wood, gate 5, road
+  1, bridge 3, crossing 3 wood + 1 copper). Walls and gates become ordinary
+  construction sites (BUILD jobs); roads, bridges and crossings are plans in
+  `BuildTools` (PAVE jobs, after DIG) that builders turn into overlay. A
+  stroke that starts on an unbuilt plan unpaints, refunding in full; Shift
+  paints gates, and a gate over an unbuilt wall swaps it (paying the
+  difference). A bridge or crossing plan is only offered to builders once it
+  touches walkable ground, so they grow out from the shore. Saved:
+  `build_tools` (plans, with progress). The shovel digs walls and gates out
+  for half their paint price.
+- **Pictures.** `WallTiles` sets each wall's region in `wall_sheet.png` from
+  its neighbours (N=1, E=2, S=4, W=8), or uses `wall.png`; gates switch
+  open / closed with the phase and use `_v` pictures (or turn 90 degrees) in
+  a vertical wall. `OverlayRenderer` (a child of the level, between the ground
+  and the buildings) draws built overlays and faded plans, from a 16-frame
+  sheet, a single tile, or a coloured stand-in. Walls get no night glow
+  (`BuildingData.glows`); gates do.
+- **Measured**: a field through a map with 132 walls builds in ~4 ms of
+  budgeted slices, as before.
+
 ### Progression
 Global XP from kills, exploration, and a slow survival drip that prevents
 stagnation from stalling progress. On level-up the clock pauses and the player
@@ -1319,7 +1381,7 @@ one key in `main.gd.save_run()`, never touching the autoload.
 
     level, clock, economy, roster, shop, modifiers, units,
     unlocks, inventory, forest, lava, director, poi, enemies, waves, weapons,
-    demolition
+    demolition, build_tools
 
 Load order is load-bearing: **shop purchases before modifiers**, because
 rebuilding an upgrade's modifiers reads its level from the purchase count; and

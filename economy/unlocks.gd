@@ -27,7 +27,16 @@ const STARTING := [
 	"blueprint:shovel",
 	"blueprint:explorer_house",   # Stage 3b: the explorer must be buyable
 	"blueprint:arrow_tower",      # Stage 5: the one weapon every run has
+	"blueprint:wall",             # Stage 6: walls and gates, painted
+	"blueprint:road",
 ]
+
+## Findable blueprints that are not shop items (Stage 6 paint tools), with
+## their names. Common.
+const EXTRA_FINDABLE := {
+	"blueprint:bridge": "Bridge",
+	"blueprint:crossing": "Void Crossing",
+}
 
 ## The findable buildings, for a pool without a catalogue (tools, tests).
 ## main.gd replaces the pool with configure().
@@ -40,6 +49,8 @@ const FINDABLE := [
 	"blueprint:hook_tower",
 	"blueprint:chain_cannon",
 	"blueprint:whirl_tower",
+	"blueprint:bridge",
+	"blueprint:crossing",
 ]
 
 ## Chance that a find is rare, while a rare blueprint is left to find.
@@ -73,6 +84,10 @@ func configure(catalogue: ShopCatalogue) -> void:
 		_rarity[id] = item.rarity
 		if item.requires != "":
 			_requires[id] = item.requires
+	for id in EXTRA_FINDABLE:
+		if not findable.has(id):
+			findable.append(id)
+			_names[id] = EXTRA_FINDABLE[id]
 
 
 ## A new run: back to the starting set.
