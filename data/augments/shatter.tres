@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="AugmentData" format=3]
+
+[ext_resource type="Script" path="res://progression/augment_data.gd" id="1_aug"]
+
+[resource]
+script = ExtResource("1_aug")
+id = "shatter"
+display_name = "Shatter"
+description = "Slowed enemies take 30% more damage."
+icon_path = "res://assets/ui/augments/shatter.png"
+rarity = 1
+tags = PackedStringArray("weapon", "frost")
+max_stacks = 1
+requires_tags = Dictionary[String, int]({"frost": 1})
+flag = "shatter"

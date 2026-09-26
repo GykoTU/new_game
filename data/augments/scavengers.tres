@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="AugmentData" format=3]
+
+[ext_resource type="Script" path="res://progression/augment_data.gd" id="1_aug"]
+
+[resource]
+script = ExtResource("1_aug")
+id = "scavengers"
+display_name = "Scavengers"
+description = "Enemies drop blueprints twice as often."
+icon_path = "res://assets/ui/augments/scavengers.png"
+rarity = 1
+tags = PackedStringArray("economy")
+max_stacks = 1
+flag = "scavengers"

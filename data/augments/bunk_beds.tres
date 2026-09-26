@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="AugmentData" format=3]
+
+[ext_resource type="Script" path="res://progression/augment_data.gd" id="1_aug"]
+[ext_resource type="Script" path="res://stats/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_0"]
+script = ExtResource("2_mod")
+stat = 24
+op = 0
+value = 1.0
+tags = PackedStringArray("house")
+
+[resource]
+script = ExtResource("1_aug")
+id = "bunk_beds"
+display_name = "Bunk Beds"
+description = "+1 bed in every house."
+icon_path = "res://assets/ui/augments/bunk_beds.png"
+rarity = 0
+tags = PackedStringArray("worker", "economy")
+max_stacks = 5
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])

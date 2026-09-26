@@ -35,3 +35,6 @@ extends Resource
 @export var first_night := 1
 ## Chance that killing one teaches a blueprint the run does not know yet.
 @export_range(0.0, 1.0) var blueprint_drop_chance := 0.03
+## XP for killing one at its base health (Stage 7); tougher nights give more
+## in proportion (EnemySystem.xp_bank).
+@export var xp := 1.0

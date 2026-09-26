@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="AugmentData" format=3]
+
+[ext_resource type="Script" path="res://progression/augment_data.gd" id="1_aug"]
+[ext_resource type="Script" path="res://stats/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_0"]
+script = ExtResource("2_mod")
+stat = 13
+op = 0
+value = 0.05
+tags = PackedStringArray("weapon")
+
+[resource]
+script = ExtResource("1_aug")
+id = "frostbite"
+display_name = "Frostbite"
+description = "Slowing weapons slow 5% more."
+icon_path = "res://assets/ui/augments/frostbite.png"
+rarity = 0
+tags = PackedStringArray("weapon", "frost")
+max_stacks = 5
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])

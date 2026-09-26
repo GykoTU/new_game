@@ -141,6 +141,16 @@ func damage(id: int, amount: float) -> float:
 	return _health[id]
 
 
+## A new maximum (health upgrades, Stage 7). Health keeps its share: a
+## building at half health stays at half.
+func set_max_health(id: int, value: float) -> void:
+	if not is_alive(id) or value <= 0.0:
+		return
+	var old := _max_health[id]
+	_max_health[id] = value
+	_health[id] = _health[id] / old * value if old > 0.0 else value
+
+
 func heal(id: int, amount: float) -> float:
 	if not is_alive(id):
 		return 0.0

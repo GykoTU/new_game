@@ -43,6 +43,7 @@ const ACTIONS := [
 	["debug_kill_base",       "Destroy the base (ends the run)", Category.DEBUG, true, true],
 	["debug_unlock_all",      "Learn every blueprint", Category.DEBUG, true, true],
 	["debug_invincible",      "Buildings take no damage (toggle)", Category.DEBUG, true, true],
+	["debug_level_up",        "Gain a level", Category.DEBUG, true, true],
 ]
 
 const _MOUSE_NAMES := {

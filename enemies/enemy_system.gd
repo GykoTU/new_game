@@ -61,6 +61,15 @@ var deaths: Array = []
 ## [position, max_hp, weapon type, generation]. Drained every tick there, so
 ## "enemies that burn to death explode" has somewhere to happen.
 var burn_kills: Array = []
+## XP earned by kills (Stage 7), taken whole by main.gd every tick. A kill is
+## worth its kind's xp, times how much tougher than base it was.
+var xp_bank := 0.0
+## Augments (Stage 7, set by main.gd): blueprint drop chance multiplier, and
+## wildfire -- an enemy that burns to death sets those near it alight.
+var drop_multiplier := 1.0
+var spread_burn := false
+const SPREAD_RADIUS := 40.0
+const SPREAD_SECONDS := 2.0
 
 var _unit_hash := SpatialHash.new()
 var _rng := RandomNumberGenerator.new()
@@ -109,6 +118,7 @@ func clear() -> void:
 	reset_pool()
 	deaths.clear()
 	burn_kills.clear()
+	xp_bank = 0.0
 	_targets_dirty = true
 
 
@@ -203,6 +213,15 @@ func apply_stun(e: int, seconds: float) -> void:
 		stun_ticks[e] = maxi(stun_ticks[e], int(round(seconds / GameClock.TICK_DELTA)))
 
 
+## Wildfire: a burning death lights everyone within SPREAD_RADIUS with the
+## same burn, credited to the same weapon.
+func _spread_fire(e: int) -> void:
+	var at := pos[e]
+	for o in nearby.query(at, SPREAD_RADIUS):
+		if o != e and is_alive(o) and pos[o].distance_squared_to(at) <= SPREAD_RADIUS * SPREAD_RADIUS:
+			apply_burn(o, burn_dps[e], SPREAD_SECONDS, burn_src[e], burn_gen[e])
+
+
 ## Dawn: everything still out burns down within `seconds`.
 func burn_all(seconds := 2.5) -> void:
 	for e in alive_ids():
@@ -211,7 +230,10 @@ func burn_all(seconds := 2.5) -> void:
 
 func _kill(e: int, by_player: bool) -> void:
 	deaths.append([pos[e], kind[e], tick])
-	if by_player and unlocks != null and _rng.randf() < kinds[kind[e]].blueprint_drop_chance:
+	if by_player:
+		var kd := kinds[kind[e]]
+		xp_bank += kd.xp * max_hp[e] / maxf(kd.max_health, 1.0)
+	if by_player and unlocks != null and _rng.randf() < kinds[kind[e]].blueprint_drop_chance * drop_multiplier:
 		var blueprint := unlocks.pick_findable(_rng)
 		if blueprint != "":
 			unlocks.reserve(blueprint)
@@ -298,6 +320,8 @@ func _step_one(e: int, dt: float, decay: float) -> void:
 			var src := burn_src[e]
 			if src >= 0:
 				burn_kills.append([pos[e], max_hp[e], src, burn_gen[e]])
+			if spread_burn:
+				_spread_fire(e)
 			_kill(e, src >= 0)
 			return
 	var slow := 0.0

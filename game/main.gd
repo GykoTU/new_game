@@ -12,6 +12,8 @@ const PAUSE_OPTIONS := "options_menu"
 ## Pause reason pushed when the base falls. Never popped: the run is over, and
 ## the only way on is back to the title screen.
 const PAUSE_GAME_OVER := "game_over"
+## The level-up screen holds the clock while a pick is pending (Stage 7).
+const PAUSE_LEVEL_UP := "level_up"
 
 ## Stat blocks for unit types, one per TYPE (D7). Keys match WorkerRoster's
 ## save keys. "base" overrides registry defaults; "stats" is what the F3
@@ -42,6 +44,7 @@ const UNIT_TYPES := {
 ## What a new run starts with. Tunable in the inspector on the Main node.
 @export var starting_resources: Dictionary[ResourceKind.Id, int] = {ResourceKind.Id.GOLD: 100}
 @export var shop_catalogue: ShopCatalogue = preload("res://data/shop/catalogue.tres")
+@export var augment_pool: AugmentPool = preload("res://data/augments/pool.tres")
 ## Every kind of enemy (Stage 4). Saves refer to them by id, not by position here.
 @export var enemy_kinds: Array[EnemyData] = [
 	preload("res://data/enemies/goblin.tres"),
@@ -112,6 +115,13 @@ var wall_tiles := WallTiles.new()
 var overlay_renderer: OverlayRenderer
 var tool_bar
 var _tool := -1          # BuildTools.Tool while a paint tool is in hand
+## Stage 7: XP, levels, augments; building health as a stat.
+var progression := Progression.new()
+var building_stats := BuildingStats.new()
+var level_up
+var xp_bar
+var _counting_reveals := true
+var _night_number := 1
 var _paint_gate := false  # this stroke paints gates (Shift at its start)
 ## Which item is being painted with: the water bucket (lava) or the shovel.
 var _paint_tool := ""
@@ -152,6 +162,7 @@ var _paint_last := Vector2i(-1, -1)
 
 func _ready() -> void:
 	shop = Shop.new(shop_catalogue, economy, roster, modifiers)
+	progression.setup(augment_pool, modifiers)
 	# The findable pool: every blueprint in the shop a run does not start with.
 	unlocks.configure(shop_catalogue)
 	for type in UNIT_TYPES:
@@ -175,6 +186,10 @@ func _ready() -> void:
 	defence.setup(level, enemies, modifiers)
 	weapons.setup(level, enemies, units, unlocks, modifiers)
 	demolition.setup(level, economy, shop_catalogue)
+	building_stats.setup(level, modifiers)
+	progression.offer_ready.connect(_on_offer_ready)
+	progression.augment_taken.connect(_on_augment_taken)
+	fog.revealed.connect(_on_revealed)
 	units.demolition = demolition
 	demolition.dug.connect(_on_dug)
 	# Walls and gates are painted, not crafted: half the paint price back.
@@ -218,6 +233,16 @@ func _ready() -> void:
 	run_summary.name = "RunSummary"
 	_add_ui(run_summary)
 	run_summary.return_pressed.connect(_return_to_title)
+	xp_bar = preload("res://UI/xp_bar.gd").new()
+	xp_bar.name = "XpBar"
+	_add_ui(xp_bar)
+	xp_bar.bind(progression)
+	level_up = preload("res://UI/level_up.gd").new()
+	level_up.name = "LevelUp"
+	_add_ui(level_up)
+	level_up.picked.connect(_on_augment_picked)
+	level_up.rerolled.connect(_on_reroll)
+	level_up.skipped.connect(_on_skip)
 	weapon_panel = preload("res://UI/weapon_panel.gd").new()
 	weapon_panel.name = "WeaponPanel"
 	_add_ui(weapon_panel)
@@ -360,6 +385,8 @@ func _process(delta: float) -> void:
 ##   7. weapons -- aim and fire, then shots move and hit, then blasts and
 ##      burning ground (WeaponSystem.step), also on step 5's hash
 ##   8. forest -- stumps rot, trees regrow (Forest.step)
+##   9. progression -- XP from kills and the survival drip (Progression.step);
+##      a level-up pauses the clock through _on_offer_ready
 ## Systems land here as they are built, in the order they must run. The director
 ## goes first so that a phase change takes effect on the same tick the units
 ## decide what to do with it.
@@ -375,6 +402,14 @@ func _simulate(dt: float) -> void:
 	defence.step(clock.tick_count)
 	weapons.tick = clock.tick_count
 	weapons.step(dt)
+	# 9. progression -- kills' XP and the survival drip (only with a base)
+	if level.base_cell != LevelGenerator.INVALID_CELL:
+		var kill_xp := floori(enemies.xp_bank)
+		enemies.xp_bank -= kill_xp
+		progression.add_xp(kill_xp)
+		progression.step()
+	else:
+		enemies.xp_bank = 0.0
 	forest.step(clock.tick_count)
 
 
@@ -405,6 +440,10 @@ func _start_new_run() -> void:
 	pois.clear()
 	waves.clear()
 	forest.start_new(clock.tick_count, level.used_seed)
+	clock.pop_pause(PAUSE_LEVEL_UP)
+	level_up.hide_screen()
+	progression.reset(level.used_seed + 7)
+	_apply_augment_rules()
 	_focus_camera(level.cell_to_world(level.start_cell))
 	_count_run_started()
 	# New game: the player picks where the base goes, inside the clearing the
@@ -433,6 +472,8 @@ func _load_run(save: Dictionary) -> bool:
 		return false
 	unlocks.load_save_data(save.get("unlocks", {}))
 	inventory.load_save_data(save.get("inventory", {}))
+	# Before modifiers: augment sources are rebuilt from the stacks.
+	progression.load_save_data(save.get("progression", {}))
 	if not modifiers.load_save_data(save.get("modifiers", {}), _resolve_modifier_source):
 		return false
 	if not level.load_save_data(save["level"]):
@@ -455,6 +496,8 @@ func _load_run(save: Dictionary) -> bool:
 		clock.load_save_data(save["clock"])
 	var focus := level.base_cell if level.base_cell != LevelGenerator.INVALID_CELL else level.start_cell
 	_focus_camera(level.cell_to_world(focus))
+	_apply_augment_rules()
+	progression.resume_offer()   # a pick left open when the run was saved
 	return true
 
 
@@ -485,6 +528,7 @@ func save_run() -> void:
 		"weapons": weapons.get_save_data(),
 		"demolition": demolition.get_save_data(),
 		"build_tools": build_tools.get_save_data(),
+		"progression": progression.get_save_data(),
 		# progression joins this as it is built. SaveManager neither knows nor
 		# cares what these keys mean.
 	})
@@ -507,6 +551,8 @@ func _bank_relics(n: int) -> void:
 ## Array[StatModifier], or null if the source no longer exists.
 ## Augments (Stage 7) will be looked up here too.
 func _resolve_modifier_source(source: String) -> Variant:
+	if source.begins_with(Progression.SOURCE_PREFIX):
+		return progression.resolve_source(source)
 	return shop.resolve_source(source)
 
 
@@ -522,12 +568,17 @@ func _on_day_started(day: int) -> void:
 func _on_phase_changed(is_night: bool, day: int) -> void:
 	_set_gates(is_night)
 	if is_night:
+		_night_number = day
 		units.on_night_started()
 		waves.start_night(day, clock.tick_count)   # toasts through _on_night_planned
 	else:
 		units.on_day_started()
 		waves.end_night()
 		enemies.burn_all()
+		progression.on_dawn(_night_number)
+		if progression.has_flag("second_wind") and level.base_cell != LevelGenerator.INVALID_CELL:
+			var base := level.grid.get_occupant(level.base_cell)
+			level.store.heal(base, level.store.get_max_health(base) * 0.25)
 
 
 func _on_night_planned(_night: int, sides: PackedInt32Array, _shape: String) -> void:
@@ -596,6 +647,7 @@ func _summary_rows() -> Array:
 		var amount := economy.amount(kind)
 		if amount > 0:
 			rows.append([ResourceKind.display_of(kind), str(amount)])
+	rows.append(["Level reached", str(progression.level)])
 	rows.append(["Relics found", str(pois.relics_found)])
 	rows.append(["Best day so far", str(int(SaveManager.profile.get("best_day", 0)))])
 	return rows
@@ -632,6 +684,8 @@ func _referenced_art() -> Array:
 	paths.append_array(ProjectileRenderer.art_paths(weapons.types))
 	paths.append_array(WeaponEffects.art_paths())
 	paths.append(DigMarks.MARK)
+	paths.append_array(preload("res://UI/level_up.gd").art_paths(augment_pool))
+	paths.append_array(preload("res://UI/xp_bar.gd").art_paths())
 	paths.append_array(WallTiles.art_paths())
 	paths.append_array(OverlayRenderer.art_paths())
 	paths.append_array(preload("res://UI/shop_ui.gd").art_paths())
@@ -733,6 +787,67 @@ func _on_poi_spotted(id: int, type: String) -> void:
 
 func _on_poi_opened(_type: String, message: String) -> void:
 	toast.show_message(message, 4.0)
+	if message != "":
+		progression.add_xp(Progression.POI_XP)
+
+
+# --- Progression (Stage 7) ----------------------------------------------------
+
+func _on_revealed(indices: PackedInt32Array) -> void:
+	if _counting_reveals and level.base_cell != LevelGenerator.INVALID_CELL:
+		progression.on_tiles_revealed(indices.size())
+
+
+## A pick is up: freeze the world and show the cards.
+func _on_offer_ready(ids: PackedStringArray) -> void:
+	if _run_over:
+		return
+	var augments := []
+	var stacks := []
+	for id in ids:
+		augments.append(augment_pool.find(id))
+		stacks.append(progression.stacks_of(id))
+	clock.push_pause(PAUSE_LEVEL_UP)
+	level_up.show_offer(progression.pick_level(), augments, stacks,
+		not progression.reroll_used, progression.skip_gold())
+
+
+func _after_pick() -> void:
+	if progression.pending <= 0:
+		level_up.hide_screen()
+		clock.pop_pause(PAUSE_LEVEL_UP)
+
+
+func _on_augment_picked(id: String) -> void:
+	progression.take(id)
+	_after_pick()
+
+
+func _on_reroll() -> void:
+	progression.reroll()
+
+
+func _on_skip() -> void:
+	economy.add(ResourceKind.Id.GOLD, progression.skip())
+	_after_pick()
+
+
+func _on_augment_taken(_id: String, _stacks: int) -> void:
+	_apply_augment_rules()
+
+
+## The rare augments' rules, pushed into the systems they change.
+func _apply_augment_rules() -> void:
+	weapons.spare_workers = progression.has_flag("careful_aim")
+	weapons.gen_bonus = 1 if progression.has_flag("chain_reaction") else 0
+	weapons.slowed_damage = 1.3 if progression.has_flag("shatter") else 1.0
+	var extra := PackedStringArray()
+	if progression.has_flag("volatile_world"):
+		extra.append("explode_enemies")
+	if extra != weapons.extra_behaviours:
+		weapons.set_extra_behaviours(extra)
+	enemies.drop_multiplier = 2.0 if progression.has_flag("scavengers") else 1.0
+	enemies.spread_burn = progression.has_flag("wildfire")
 
 ## Runs after both a new level is generated and a save is loaded.
 func _on_level_generated() -> void:
@@ -1011,13 +1126,17 @@ func _debug_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("debug_spawn_enemies"):
 		_debug_spawn_enemies()
 	elif event.is_action_pressed("debug_reveal_map"):
+		_counting_reveals = false   # the dev shortcut is not exploring
 		fog.reveal_all()
+		_counting_reveals = true
 		print("Debug: map revealed")
 	elif event.is_action_pressed("debug_unlock_all"):
 		# Blueprints only: upgrades still have to be bought (Ctrl+G pays).
 		for id in unlocks.findable:
 			unlocks.add(id)
 		toast.show_message("Debug: every blueprint learned. Buy upgrades in the shop.", 2.5)
+	elif event.is_action_pressed("debug_level_up"):
+		progression.add_xp(progression.xp_to_next() - progression.xp)
 	elif event.is_action_pressed("debug_invincible"):
 		level.store.invincible = not level.store.invincible
 		toast.show_message("Debug: buildings are %s." % ("invincible" if level.store.invincible

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="AugmentData" format=3]
+
+[ext_resource type="Script" path="res://progression/augment_data.gd" id="1_aug"]
+
+[resource]
+script = ExtResource("1_aug")
+id = "second_wind"
+display_name = "Second Wind"
+description = "At every dawn the base heals a quarter of its health."
+icon_path = "res://assets/ui/augments/second_wind.png"
+rarity = 1
+tags = PackedStringArray("defence", "base")
+max_stacks = 1
+flag = "second_wind"

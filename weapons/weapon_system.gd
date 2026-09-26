@@ -54,6 +54,16 @@ var hooked_by := {}
 var caught := {}
 var held_by := {}
 
+## Rules augments switch on (Stage 7; main.gd sets them from Progression).
+## careful_aim: nothing of ours hurts workers.
+var spare_workers := false
+## chain_reaction: generations go this much further.
+var gen_bonus := 0
+## shatter: slowed enemies take this much more damage (1.0 = off).
+var slowed_damage := 1.0
+## volatile_world and the like: behaviours every weapon type gets.
+var extra_behaviours := PackedStringArray()
+
 var _type_of := {}   # building type id -> weapon type index
 ## The finished weapon buildings, rebuilt when buildings change.
 var _b := PackedInt32Array()
@@ -128,6 +138,7 @@ func _compile() -> void:
 	var known := unlocks.ids()
 	for t in types.size():
 		var ids := PackedStringArray(types[t].behaviours)
+		ids.append_array(extra_behaviours)
 		var prefix := "item:behaviour.%s." % types[t].id
 		for u in known:
 			if u.begins_with(prefix):
@@ -140,6 +151,21 @@ func _compile() -> void:
 
 func stat(t: int, s: int) -> float:
 	return stats[t].get_value(s)
+
+
+## How many generations this type's splits and chained blasts may go.
+func max_gen(t: int) -> int:
+	return types[t].max_generation + gen_bonus
+
+
+func friendly_fire_of(t: int) -> bool:
+	return t >= 0 and types[t].friendly_fire and not spare_workers
+
+
+## Replaces the behaviours every type gets, and recompiles.
+func set_extra_behaviours(ids: PackedStringArray) -> void:
+	extra_behaviours = ids
+	_compile()
 
 
 ## The weapon type a building type fires, or -1.
@@ -247,6 +273,8 @@ func hit_enemy(t: int, g: int, e: int, amount: float) -> bool:
 		return false
 	var at := enemies.pos[e]
 	var max_hp := enemies.max_hp[e]
+	if slowed_damage != 1.0 and enemies.slow_ticks[e] > 0:
+		amount *= slowed_damage
 	if not enemies.damage(e, amount, true):
 		return false
 	_on_enemy_killed(e, t, g, at, max_hp)
@@ -286,7 +314,7 @@ func _spawn(t: int, owner: int, at: Vector2, v: Vector2, g: int) -> int:
 	projectiles.pierce_left[p] = int(round(stat(t, Stats.Id.PIERCE_COUNT)))
 	projectiles.bounce_left[p] = int(round(stat(t, Stats.Id.BOUNCE_COUNT)))
 	projectiles.life[p] = maxi(int(round(stat(t, Stats.Id.PROJECTILE_LIFETIME) / GameClock.TICK_DELTA)), 1)
-	projectiles.friendly[p] = 1 if d.friendly_fire else 0
+	projectiles.friendly[p] = 1 if friendly_fire_of(t) else 0
 	for b in sets[t].spawn:
 		b.on_spawn(self, p)
 	return p

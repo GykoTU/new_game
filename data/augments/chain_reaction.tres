@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="AugmentData" format=3]
+
+[ext_resource type="Script" path="res://progression/augment_data.gd" id="1_aug"]
+
+[resource]
+script = ExtResource("1_aug")
+id = "chain_reaction"
+display_name = "Chain Reaction"
+description = "Split shots and chained explosions go one generation further."
+icon_path = "res://assets/ui/augments/chain_reaction.png"
+rarity = 1
+tags = PackedStringArray("weapon", "explosive")
+max_stacks = 1
+requires_tags = Dictionary[String, int]({"explosive": 1})
+flag = "chain_reaction"

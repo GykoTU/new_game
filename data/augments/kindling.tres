@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="AugmentData" format=3]
+
+[ext_resource type="Script" path="res://progression/augment_data.gd" id="1_aug"]
+[ext_resource type="Script" path="res://stats/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_0"]
+script = ExtResource("2_mod")
+stat = 15
+op = 1
+value = 0.3
+tags = PackedStringArray("weapon")
+
+[resource]
+script = ExtResource("1_aug")
+id = "kindling"
+display_name = "Kindling"
+description = "+30% burn damage."
+icon_path = "res://assets/ui/augments/kindling.png"
+rarity = 0
+tags = PackedStringArray("weapon", "fire")
+max_stacks = 5
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])

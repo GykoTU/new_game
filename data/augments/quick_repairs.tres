@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="AugmentData" format=3]
+
+[ext_resource type="Script" path="res://progression/augment_data.gd" id="1_aug"]
+[ext_resource type="Script" path="res://stats/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_0"]
+script = ExtResource("2_mod")
+stat = 22
+op = 1
+value = 0.3
+tags = PackedStringArray("builder")
+
+[resource]
+script = ExtResource("1_aug")
+id = "quick_repairs"
+display_name = "Quick Repairs"
+description = "Builders repair 30% faster."
+icon_path = "res://assets/ui/augments/quick_repairs.png"
+rarity = 0
+tags = PackedStringArray("defence", "worker")
+max_stacks = 5
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])

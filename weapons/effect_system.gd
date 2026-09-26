@@ -152,7 +152,7 @@ func _detonate(at: Vector2, r: float, damage: float, t: int, g: int, kb: float) 
 			push = dir * kb * (1.0 - 0.5 * clampf(d / reach, 0.0, 1.0))
 		if not w.hit_enemy(t, g, e, damage) and push != Vector2.ZERO:
 			en.apply_impulse(e, push)
-	if w.types[t].friendly_fire:
+	if w.friendly_fire_of(t):
 		for u in w.exposed_units_near(at, r):
 			w.units.damage_unit(u, damage)
 
@@ -166,6 +166,6 @@ func _burn(id: int) -> void:
 		if en.is_alive(e) and en.pos[e].distance_squared_to(at) <= reach * reach:
 			# A short burn, topped up every pulse while it stands here.
 			en.apply_burn(e, amount[id], PULSE * GameClock.TICK_DELTA * 3.0, type[id], gen[id])
-	if w.types[type[id]].friendly_fire:
+	if w.friendly_fire_of(type[id]):
 		for u in w.exposed_units_near(at, r):
 			w.units.damage_unit(u, amount[id] * PULSE * GameClock.TICK_DELTA)

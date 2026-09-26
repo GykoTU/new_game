@@ -183,7 +183,7 @@ class Split extends Behaviour:
 
 	func on_unit_hit(w: WeaponSystem, p: int, e: int, _final: bool) -> bool:
 		var ps := w.projectiles
-		if ps.gen[p] >= w.types[ps.type[p]].max_generation:
+		if ps.gen[p] >= w.max_gen(ps.type[p]):
 			return false
 		var n := int(round(w.stat(ps.type[p], S.SPLIT_COUNT)))
 		if n <= 0:
@@ -443,7 +443,7 @@ class ExplodeEnemies extends Behaviour:
 		return ON_KILL
 
 	func on_kill(w: WeaponSystem, t: int, gen: int, at: Vector2, max_hp: float) -> void:
-		if gen >= w.types[t].max_generation:
+		if gen >= w.max_gen(t):
 			return
 		w.effects.blast(at, maxf(w.stat(t, S.AREA_RADIUS), MIN_RADIUS),
 			w.stat(t, S.DAMAGE) + max_hp * HP_SHARE, t, gen + 1, 0.0, DELAY_TICKS)

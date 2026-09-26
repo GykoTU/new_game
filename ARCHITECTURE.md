@@ -707,7 +707,7 @@ map, **Ctrl+E** spawn 10 goblins at the map edge nearest the camera (they do
 not burn by day), **Ctrl+K** destroy the base
 (which ends the run, for testing the summary), **Ctrl+U** learn every
 blueprint (upgrades still have to be bought: Ctrl+G pays), **Ctrl+I** toggle
-invincible buildings.
+invincible buildings, **Ctrl+L** a level-up (Stage 7).
 
 ### UI and input: rules that are easy to break
 
@@ -1314,12 +1314,68 @@ in `WorldGrid`, `FlowFields`, `EnemySystem`, `UnitSystem`, `JobBoard`,
 - **Measured**: a field through a map with 132 walls builds in ~4 ms of
   budgeted slices, as before.
 
-### Progression
-Global XP from kills, exploration, and a slow survival drip that prevents
-stagnation from stalling progress. On level-up the clock pauses and the player
-picks **one of three** augments. Augments carry tags so synergy rules can be
-expressed by tag rather than by naming individual augments. Shop purchases are
-the small, frequent, resource-priced track; augments are the rare, loud one.
+### Progression: XP, level-ups, augments (implemented, Stage 7)
+
+**Diagram: [`docs/progression.svg`](docs/progression.svg)** — where XP comes
+from, how one pick is drawn and decided, and what a taken augment changes.
+
+Files: `progression/progression.gd` (`Progression`, RefCounted),
+`progression/augment_data.gd`, `progression/augment_pool.gd`,
+`data/augments/*.tres` + `pool.tres`, `buildings/building_stats.gd`,
+`UI/level_up.gd`, `UI/xp_bar.gd`; hooks in `WeaponSystem`, `EnemySystem`,
+`EffectSystem`, `BuildingStore`, `main.gd`.
+
+- **XP only counts once the base stands** (`main._simulate` step 9 runs only
+  with a base). Sources:
+  - *kills* — `EnemySystem.xp_bank` collects `EnemyData.xp x max hp / base
+    max hp` for every enemy the player's side kills (weapons, burns, the
+    zap); the dawn sweep gives nothing. main.gd moves whole points across
+    each tick.
+  - *exploration* — 1 XP per `TILES_PER_XP` (25) tiles the fog reveals
+    (`main._on_revealed`; Ctrl+F does not count) and `POI_XP` (5) per point
+    of interest opened.
+  - *survival* — 1 XP every `DRIP_SECONDS` (10 s) of game time, and
+    `DAWN_BONUS` (3) x the night number at each dawn.
+- **Levels.** `xp_to_next(level) = BASE_XP (15) x GROWTH (1.3)^(level-1)`.
+  Each level gained adds one **pending** pick; several can queue.
+  `pick_level()` is the level the current pick is for.
+- **One pick.** While any pick is pending the clock is paused (reason
+  `"level_up"`) and `UI/level_up.gd` (layer 7) shows three cards. Offers are
+  drawn by weight **without replacement** from augments that are not maxed
+  and whose `requires_tags` are met (tag counts over everything taken,
+  stacks counting). Weight = `RARITY_WEIGHT` (common 10, rare 3) x
+  (1 + `SYNERGY` 0.5 per owned stack sharing a tag), capped at x3. The
+  player picks one, rerolls once per level-up, or skips for
+  `15 + 5 x pick_level()` gold. When everything is maxed the level still
+  counts and nothing is offered.
+- **Commons** (max 5 stacks) are modifiers: the source `"aug:<id>"`, scaled
+  by stacks through `AugmentData.modifiers_at(n)` like shop upgrade levels.
+  `Progression.resolve_source` rebuilds them on load, so a rebalanced augment
+  reaches runs in progress.
+- **Rares** (once) set a `flag`; `main._apply_augment_rules()` pushes flags
+  into the systems (after a pick, a load and a new run):
+  `careful_aim` -> `WeaponSystem.spare_workers`; `chain_reaction` ->
+  `WeaponSystem.gen_bonus` (+1 split / chain generation via `max_gen(t)`);
+  `shatter` -> `WeaponSystem.slowed_damage` 1.3; `volatile_world` ->
+  `WeaponSystem.set_extra_behaviours` adds `explode_enemies` to every type;
+  `scavengers` -> `EnemySystem.drop_multiplier` 2; `wildfire` ->
+  `EnemySystem.spread_burn` (a burning death lights enemies within 40 px
+  for 2 s); `second_wind` -> main heals the base 25% at dawn.
+  `WeaponSystem.friendly_fire_of(t)` is now the one place friendly fire is
+  decided (used by `EffectSystem` too).
+- **Building health is a stat.** `BuildingStats` keeps a MAX_HEALTH
+  `StatBlock` per building type (tags: the type's tags + `building` + its
+  id) and re-applies on `modifiers.changed`, level load and placement;
+  `BuildingStore.set_max_health` keeps each building's health share.
+- **Saved** under `progression`: xp, level, pending, stacks, reroll used,
+  drip and tile remainders, rng state. It loads **before modifiers** (the
+  `aug:` sources read stacks); the open offer is drawn again after loading
+  (`resume_offer`).
+- **UI.** `UI/xp_bar.gd` (layer 2, under the day bar): "Lv N" and a bar,
+  driven by `xp_changed`. The level-up cards use
+  `augment_card_common.png` / `augment_card_rare.png` and the augment icon
+  when present; otherwise a bordered panel and an initials badge.
+- **Dev shortcut:** **Ctrl+L** grants one level-up.
 
 Per-building and per-worker XP is noted as a future direction and is not
 designed for yet.
@@ -1381,9 +1437,10 @@ one key in `main.gd.save_run()`, never touching the autoload.
 
     level, clock, economy, roster, shop, modifiers, units,
     unlocks, inventory, forest, lava, director, poi, enemies, waves, weapons,
-    demolition, build_tools
+    demolition, build_tools, progression
 
-Load order is load-bearing: **shop purchases before modifiers**, because
+Load order is load-bearing: **shop purchases and progression before
+modifiers** (augment modifiers read their stacks), because
 rebuilding an upgrade's modifiers reads its level from the purchase count; and
 **modifiers before the level**, because they are cheap to reject, so a run with
 a missing upgrade is refused before the map is built. **Units after the

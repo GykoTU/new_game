@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="AugmentData" format=3]
+
+[ext_resource type="Script" path="res://progression/augment_data.gd" id="1_aug"]
+
+[resource]
+script = ExtResource("1_aug")
+id = "careful_aim"
+display_name = "Careful Aim"
+description = "Your shots, blasts and fires spare your workers."
+icon_path = "res://assets/ui/augments/careful_aim.png"
+rarity = 1
+tags = PackedStringArray("weapon", "worker")
+max_stacks = 1
+flag = "careful_aim"

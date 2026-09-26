@@ -222,6 +222,22 @@ Sales work in both sections (a SHOP_PRICE modifier, already built).
   can't get out either.
 - **Roads** make your workers walk faster (1.6x). Enemies ignore them.
 
+## Progression: levels and augments (decided)
+
+- You earn **XP** once your base stands: from **kills** (tougher enemies are
+  worth more), from **exploring** (revealing the map, opening points of
+  interest) and from **surviving** (a slow trickle, and a bonus at every
+  dawn that grows with the night number).
+- Each **level** pauses the game and offers **three augments**. Pick one,
+  **reroll** once for three new ones, or **skip** for gold.
+- **Commons** stack up to 5 times: weapon stats, worker and economy boosts,
+  building and defence health. **Rares** can be taken once and change a
+  rule (enemies explode on death, fires spread, shots spare your workers...).
+- Offers **lean toward what you already have**: an augment sharing a tag with
+  ones you own is more likely. Some rares only appear once you own enough of
+  their tag (Wildfire needs two fire augments).
+- Several level-ups at once queue up and are picked one after another.
+
 ## The end of a run (decided)
 
 - The run ends when **the base is destroyed**. Nothing else ends it.

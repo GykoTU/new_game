@@ -256,11 +256,19 @@ First loop the player can actually watch happen.
 
 ## Stage 7 — Progression
 
-- [ ] XP from kills, exploration, and the survival drip
-- [ ] Level-up pauses the clock; choose one of three
-- [ ] `AugmentData` with synergy tags
-- [ ] Augment pool, weighting, and offer generation
-- [ ] Shop upgrades routed through the modifier system
+- [x] XP from kills, exploration, and the survival drip
+- [x] Level-up pauses the clock; choose one of three, reroll once, or skip
+      for gold
+- [x] `AugmentData` with synergy tags; rares can require owned tags
+- [x] Augment pool, weighting (rarity x synergy), and offer generation
+- [x] Shop upgrades routed through the modifier system (since Stage 5);
+      augments use the same path (`aug:` sources)
+- [x] 25 augments: 18 commons (stack to 5) across weapons, workers and
+      economy, defence; 7 rare rule-changers (once)
+- [x] Building health as a stat (`BuildingStats`), so augments can raise it
+- [ ] Balancing after play-testing: XP curve (15 x 1.3^n), drip, kill XP,
+      skip gold, rarity and synergy weights, every augment's numbers
+- [ ] More augments as weapons and systems grow (the pool is data only)
 
 ## Stage 8 — Meta progression
 
@@ -350,6 +358,14 @@ Full paths, 32x32 unless stated. Ticked = the file exists.
       enemies; without it, three circling dots
 - [ ] `assets/ui/tab_weapons.png`, `assets/ui/tab_workers.png`,
       `assets/ui/tab_utility.png` — optional 16x16 icons for the sub-tabs
+
+**7** (all have stand-ins)
+- [ ] `assets/ui/augments/<id>.png` — 64x64 icon per augment, one per file in
+      `data/augments/` (e.g. `sharpened.png`, `wildfire.png`); without it, an
+      initials badge
+- [ ] `assets/ui/augment_card_common.png`, `augment_card_rare.png` — 176x232
+      card backgrounds; without them, a grey / blue bordered panel
+- [ ] `assets/ui/level.png` — optional 24x24 icon beside the XP bar
 
 **6** (all have stand-ins)
 - [ ] `assets/buildings/walls/wall.png` — 32x32
