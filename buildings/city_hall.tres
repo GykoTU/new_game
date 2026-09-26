@@ -12,3 +12,4 @@ build_work = 20.0
 tags = PackedStringArray("building", "city_hall")
 unique = true
 allowed_grounds = 655
+threat_priority = 5.0

@@ -8,4 +8,6 @@ script = ExtResource("1_sxmdb")
 id = "base"
 texture = ExtResource("2_opixg")
 unique = true
+max_health = 500.0
+threat_priority = 10.0
 metadata/_custom_type_script = "uid://cmw2phfafd342"

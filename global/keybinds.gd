@@ -39,6 +39,7 @@ const ACTIONS := [
 	["debug_stat_overlay",    "Stat overlay",      Category.DEBUG,  true,  true],
 	["debug_skip_phase",      "Skip to dusk / dawn", Category.DEBUG, true, true],
 	["debug_reveal_map",      "Reveal the whole map", Category.DEBUG, true, true],
+	["debug_spawn_enemies",   "Spawn 10 goblins at the nearest edge", Category.DEBUG, true, true],
 	["debug_kill_base",       "Destroy the base (ends the run)", Category.DEBUG, true, true],
 ]
 

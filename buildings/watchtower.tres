@@ -12,3 +12,4 @@ build_work = 10.0
 tags = PackedStringArray("building", "watchtower")
 reveal_radius = 12
 allowed_grounds = 655
+threat_priority = 2.0

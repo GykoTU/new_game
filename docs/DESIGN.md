@@ -140,6 +140,25 @@ Sales work in both sections (a SHOP_PRICE modifier, already built).
 - **Waves come at night** and get stronger with the day number (Stage 4).
 - The game **autosaves at dawn**.
 
+## Enemies and nights (decided)
+
+- **Enemies come at night**, from 1–3 map edges (more sides on later
+  nights), announced at dusk: "Enemies approach from the north and east."
+- **Goblins** walk; **bees** are fast and fragile and fly over water, lava
+  and void. Buildings stop both — walls block everything.
+- Nights grow stronger with the day and change **shape**: from night 3 a
+  night is a swarm (many, fragile, bee-heavy), an elite night (few, tough) or
+  a mix.
+- Enemies choose what to attack by value and distance: the base is worth
+  most, but a nearby **cluster** of houses can draw them away. A building
+  standing in their way gets smashed; they go around if the detour is short.
+- A worker out in the open (a builder repairing at night) gets chased and
+  hit, and **dies** at 0 health — it is gone, and its bed is free again.
+- **The base fights back**: it zaps the nearest enemy in range about once a
+  second. Weapon buildings come in Stage 5.
+- **Dawn burns** every enemy still alive within a few seconds.
+- A killed enemy sometimes drops a **blueprint** the run doesn't know yet.
+
 ## The end of a run (decided)
 
 - The run ends when **the base is destroyed**. Nothing else ends it.

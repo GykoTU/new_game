@@ -166,19 +166,27 @@ First loop the player can actually watch happen.
 
 ## Stage 4 — Enemies
 
-- [ ] Enemy SoA store + `MultiMeshInstance2D` rendering
-- [ ] Spatial hash for unit/enemy broadphase (moved from 2a: its first real
-      user is projectile and enemy hit tests)
-- [ ] Edge spawning, wave composition per day
-- [ ] Flow field cache and shared-target movement
-- [ ] Target scoring by `threat_priority` and distance
-- [ ] Enemies break walls when walls block their path
-- [ ] Building damage and destruction
-- [ ] Enemies drop blueprints
-- [ ] Impulse channel on enemy movement (knockback, pulls, hooks),
-      respecting the blocking grid so nothing is pushed through a wall
-- [ ] Enemy movement events: `on_wall_impact`, `on_unit_impact`
-- [ ] Status slots per enemy (slow, burn): strongest wins, duration refreshes
+- [x] Enemy SoA store (cap 600, spawns dropped when full) +
+      `MultiMeshInstance2D` rendering, hit flash, burn tint
+- [x] Spatial hash for enemy/unit broadphase, rebuilt every tick
+- [x] Edge spawning, wave composition per night (budget, sides, shapes:
+      swarm / elite / mixed), toast at dusk
+- [x] Flow field cache (8 slots, ground and flying), built in slices
+- [x] Target scoring by `threat_priority`, cluster pull and distance
+- [x] Enemies break through player buildings when they block the way
+- [x] Building damage and destruction; health bars
+- [x] Workers can be caught and killed; bed freed
+- [x] The base fights back (zap: stats DAMAGE / FIRE_RATE / RANGE)
+- [x] Dawn burns every enemy left
+- [x] Enemies drop blueprints (findable pool; weapons join in Stage 5)
+- [x] Impulse channel, respecting the grid
+- [x] Enemy movement events: `wall_impact`, `unit_impact`
+- [x] Status slots per enemy (slow, burn): strongest wins, duration refreshes
+- [x] Dev shortcut: Ctrl+E spawns 10 goblins at the nearest edge
+- [ ] Balancing after play-testing: night length vs travel time from the
+      edges, wave budget, zap numbers, base health (500)
+- [ ] Enemies are hard to see at night (the tint darkens them too); decide
+      whether they should get a faint outline or glow
 
 ## Stage 5 — Weapons
 
@@ -265,19 +273,27 @@ Full paths, 32x32 unless stated. Ticked = the file exists.
 - [x] `assets/ui/sun.png`
 - [x] `assets/ui/moon.png`
 
+**4** (all optional)
+- [x] `assets/npcs/goblin.png`, `assets/npcs/bee.png` — already there
+- [ ] `assets/npcs/goblin_walk.png`, `assets/npcs/goblin_attack.png` — strips
+- [ ] `assets/npcs/bee_attack.png` — strip (`bee.png` can be the wing-flap strip)
+- [ ] `assets/effects/zap_hit.png` — strip where a zap lands
+- [ ] `assets/effects/enemy_death.png` — strip; without it, a fading ring
+- [ ] `assets/effects/burn.png` — flame over burning enemies; without it, the tint
+
 **3b**
-- [ ] `assets/npcs/explorer.png` — or a horizontal strip of 32x32 frames
+- [x] `assets/npcs/explorer.png` — or a horizontal strip of 32x32 frames
 - [ ] `assets/npcs/explorer_walk.png` — optional walk strip, like `carrier_walk.png`
-- [ ] `assets/ui/explorer_icon.png`
-- [ ] `assets/buildings/explorer_house.png`
-- [ ] `assets/buildings/watchtower.png`
-- [ ] `assets/buildings/city_hall.png` — one tile; say if it should be 2x2 (64x64)
-- [ ] `assets/buildings/poi/blueprint_cache.png`
-- [ ] `assets/buildings/poi/relic_cache.png`
-- [ ] `assets/buildings/poi/npc_house.png`
-- [ ] `assets/buildings/poi/tree_fruit_special.png` — the special fruit tree
-- [ ] `assets/ui/relic.png`
-- [ ] `assets/ui/explore_flag.png` — optional; without it no marker is drawn
+- [x] `assets/ui/explorer_icon.png`
+- [x] `assets/buildings/explorer_house.png`
+- [x] `assets/buildings/watchtower.png`
+- [x] `assets/buildings/city_hall.png` — one tile; say if it should be 2x2 (64x64)
+- [x] `assets/buildings/poi/blueprint_cache.png`
+- [x] `assets/buildings/poi/relic_cache.png`
+- [x] `assets/buildings/poi/npc_house.png`
+- [x] `assets/buildings/poi/tree_fruit_special.png` — the special fruit tree
+- [x] `assets/ui/relic.png`
+- [x] `assets/ui/explore_flag.png` — optional; without it no marker is drawn
 
 ## Open questions
 

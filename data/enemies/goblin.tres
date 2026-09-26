@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" path="res://enemies/enemy_data.gd" id="1_ed"]
+
+[resource]
+script = ExtResource("1_ed")
+id = "goblin"
+display_name = "Goblin"
+sprite_idle = "res://assets/npcs/goblin.png"
+sprite_walk = "res://assets/npcs/goblin_walk.png"
+sprite_attack = "res://assets/npcs/goblin_attack.png"
+max_health = 30.0
+move_speed = 42.0
+damage = 6.0
+attack_interval = 1.0
+aggro_range = 56.0
+spawn_cost = 1.0
+first_night = 1
+blueprint_drop_chance = 0.03

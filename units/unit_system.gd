@@ -13,6 +13,8 @@ extends RefCounted
 ## A count, idle count or bed count changed. The worker bar listens.
 ## (Refusals are not signals: send_miner returns the reason to its caller.)
 signal changed(kind: int)
+## A worker died (Stage 4: enemies). Its bed is free again.
+signal unit_killed(kind: int)
 
 ## Ticks between an idle unit's decisions (a third of a second at 60 ticks/s).
 ## Staggered per unit, so idle units never all pathfind on the same tick.
@@ -293,6 +295,46 @@ func _on_building_placed(type: String, cell: Vector2i) -> void:
 				_house_mine[house] = m
 				_mine_house[m] = house
 				return
+
+
+# --- Harm (Stage 4) -----------------------------------------------------------
+
+## True while the unit is out in the open, where enemies can reach it. Inside a
+## house, the base, or stationed at a mine, it is safe.
+func is_exposed(id: int) -> bool:
+	return store.is_alive(id) and store.inside[id] == 0 \
+		and store.state[id] != UnitStore.State.STATIONED
+
+
+## Full health for this kind of unit (the MAX_HEALTH stat).
+func max_health(kind: int) -> float:
+	return _stat(kind, Stats.Id.MAX_HEALTH)
+
+
+## Enemy damage. Returns true on the hit that kills it.
+func damage_unit(id: int, amount: float) -> bool:
+	if not is_exposed(id):
+		return false
+	store.hp[id] -= amount
+	if store.hp[id] > 0.0:
+		return false
+	kill_unit(id)
+	return true
+
+
+## Gone for good: what it carried is lost, what it had claimed is released,
+## and its bed is free for a new one from the shop.
+func kill_unit(id: int) -> void:
+	if not store.is_alive(id):
+		return
+	var kind: int = store.kind[id]
+	_release_drop(id)
+	if id == _commuter:
+		_commuter = UnitStore.NONE
+		_commuter_mine = UnitStore.NONE
+	store.despawn(id)
+	changed.emit(kind)
+	unit_killed.emit(kind)
 
 
 # --- Explorers ----------------------------------------------------------------

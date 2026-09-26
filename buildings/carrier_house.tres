@@ -13,3 +13,4 @@ tags = PackedStringArray("building", "house", "carrier_house")
 is_house = true
 house_for = 2
 allowed_grounds = 655
+threat_priority = 3.0

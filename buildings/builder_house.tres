@@ -12,3 +12,4 @@ build_work = 8.0
 tags = PackedStringArray("building", "house", "builder_house")
 is_house = true
 allowed_grounds = 655
+threat_priority = 3.0

@@ -42,6 +42,11 @@ const UNIT_TYPES := {
 ## What a new run starts with. Tunable in the inspector on the Main node.
 @export var starting_resources: Dictionary[ResourceKind.Id, int] = {ResourceKind.Id.GOLD: 100}
 @export var shop_catalogue: ShopCatalogue = preload("res://data/shop/catalogue.tres")
+## Every kind of enemy (Stage 4). Saves refer to them by id, not by position here.
+@export var enemy_kinds: Array[EnemyData] = [
+	preload("res://data/enemies/goblin.tres"),
+	preload("res://data/enemies/bee.tres"),
+]
 ## Debug builds only: how much of every resource the grant shortcut adds.
 @export var debug_grant_amount := 100
 ## Debug builds only: holding the grant shortcut repeats it after this delay,
@@ -87,6 +92,14 @@ var fog := FogOfWar.new()
 var pois := PointsOfInterest.new()
 ## Draws the fog. Created in _ready.
 var fog_renderer: FogRenderer
+## Stage 4: the enemies, who comes each night, and the base's own zap.
+var enemies := EnemySystem.new()
+var waves := Waves.new()
+var defence := BaseDefence.new()
+## Drawing for the above. Created in _ready.
+var enemy_renderer: EnemyRenderer
+var combat_effects: CombatEffects
+var health_bars: HealthBars
 ## Where the explorers are headed (only with its optional sprite). Created in _ready.
 var explore_flags: ExploreFlags
 ## Owned items (the bucket), top left. Created in _ready.
@@ -134,6 +147,12 @@ func _ready() -> void:
 	units.pois = pois
 	pois.spotted.connect(_on_poi_spotted)
 	pois.opened.connect(_on_poi_opened)
+	enemies.setup(level, units, unlocks, enemy_kinds)
+	waves.setup(enemies, level)
+	defence.setup(level, enemies, modifiers)
+	enemies.blueprint_dropped.connect(_on_blueprint_dropped)
+	waves.night_planned.connect(_on_night_planned)
+	units.unit_killed.connect(_on_unit_killed)
 	var marks := TileMarks.new()
 	marks.name = "LavaMarks"
 	level.add_sibling(marks)   # drawn over the ground, under the units
@@ -169,6 +188,21 @@ func _ready() -> void:
 	add_child(fog_renderer)
 	move_child(fog_renderer, build_placer.get_index())
 	fog_renderer.bind(level, fog)
+	# Enemies and their effects with the units (z 1), so the fog hides them.
+	enemy_renderer = EnemyRenderer.new()
+	enemy_renderer.name = "EnemyRenderer"
+	add_child(enemy_renderer)
+	move_child(enemy_renderer, unit_renderer.get_index() + 1)
+	enemy_renderer.bind(enemy_kinds)
+	combat_effects = CombatEffects.new()
+	combat_effects.name = "CombatEffects"
+	add_child(combat_effects)
+	move_child(combat_effects, enemy_renderer.get_index() + 1)
+	health_bars = HealthBars.new()
+	health_bars.name = "HealthBars"
+	add_child(health_bars)
+	move_child(health_bars, build_placer.get_index())
+	health_bars.bind(level, units)
 	explore_flags = ExploreFlags.new()
 	explore_flags.name = "ExploreFlags"
 	add_child(explore_flags)
@@ -232,6 +266,9 @@ func _process(delta: float) -> void:
 	building_glow.set_night(director.darkness(), light)
 	fog_renderer.refresh()
 	explore_flags.refresh()
+	enemy_renderer.draw_enemies(enemies, clock.tick_count)
+	combat_effects.refresh(defence, enemies, clock.tick_count, light)
+	health_bars.refresh()
 	day_bar.refresh()
 	_debug_repeat(delta)
 
@@ -239,9 +276,12 @@ func _process(delta: float) -> void:
 ## The single place simulation order is decided. Every system that advances the
 ## world is stepped from here, in this order, with a fixed dt.
 ##   1. director -- day/night, the day counter (RunDirector.step)
-##   2. units -- move, decide, build, chop, gather, haul (UnitSystem.step)
-##   3. fog -- units that walked into a new tile look around (FogOfWar.step_units)
-##   4. forest -- stumps rot, trees regrow (Forest.step)
+##   2. waves -- tonight's groups set out on schedule (Waves.step)
+##   3. units -- move, decide, build, chop, gather, haul (UnitSystem.step)
+##   4. fog -- units that walked into a new tile look around (FogOfWar.step_units)
+##   5. enemies -- fields, hash, targets, moving, hitting, burning (EnemySystem.step)
+##   6. defence -- the base zaps, using the hash step 5 built (BaseDefence.step)
+##   7. forest -- stumps rot, trees regrow (Forest.step)
 ## Systems land here as they are built, in the order they must run. The director
 ## goes first so that a phase change takes effect on the same tick the units
 ## decide what to do with it.
@@ -249,8 +289,12 @@ func _simulate(dt: float) -> void:
 	director.step()
 	units.night = director.is_night
 	units.tick = clock.tick_count
+	waves.step(clock.tick_count)
 	units.step(dt)
 	fog.step_units(units.store)
+	enemies.tick = clock.tick_count
+	enemies.step(dt)
+	defence.step(clock.tick_count)
 	forest.step(clock.tick_count)
 
 
@@ -265,6 +309,8 @@ func _start_new_run() -> void:
 	director.reset()
 	units.night = false
 	units.clear()
+	enemies.clear()
+	defence.clear()
 	modifiers.clear()
 	shop.reset()
 	roster.clear()
@@ -274,6 +320,7 @@ func _start_new_run() -> void:
 	economy.set_all(starting_resources)
 	level.generate()
 	pois.clear()
+	waves.clear()
 	forest.start_new(clock.tick_count, level.used_seed)
 	_focus_camera(level.cell_to_world(level.start_cell))
 	_count_run_started()
@@ -313,6 +360,8 @@ func _load_run(save: Dictionary) -> bool:
 	forest.load_save_data(save.get("forest", {}))
 	lava.load_save_data(save.get("lava", {}))
 	pois.load_save_data(save.get("poi", {}))
+	enemies.load_save_data(save.get("enemies", {}))
+	waves.load_save_data(save.get("waves", {}))
 	director.load_save_data(save.get("director", {}))
 	units.night = director.is_night
 	if save.has("clock"):
@@ -344,6 +393,8 @@ func save_run() -> void:
 		"lava": lava.get_save_data(),
 		"director": director.get_save_data(),
 		"poi": pois.get_save_data(),
+		"enemies": enemies.get_save_data(),
+		"waves": waves.get_save_data(),
 		# progression joins this as it is built. SaveManager neither knows nor
 		# cares what these keys mean.
 	})
@@ -378,12 +429,28 @@ func _on_day_started(day: int) -> void:
 	toast.show_message("Day %d" % day, 3.0)
 
 
-func _on_phase_changed(is_night: bool, _day: int) -> void:
+func _on_phase_changed(is_night: bool, day: int) -> void:
 	if is_night:
 		units.on_night_started()
-		toast.show_message("Night falls. Everyone heads home.", 3.0)
+		waves.start_night(day, clock.tick_count)   # toasts through _on_night_planned
 	else:
 		units.on_day_started()
+		waves.end_night()
+		enemies.burn_all()
+
+
+func _on_night_planned(_night: int, sides: PackedInt32Array, _shape: String) -> void:
+	toast.show_message("Night falls. Enemies approach from %s." % Waves.describe_sides(sides), 4.0)
+
+
+func _on_unit_killed(kind: int) -> void:
+	toast.show_message("Your %s was killed." % WorkerRoster.display_of(kind).to_lower(), 3.0)
+
+
+func _on_blueprint_dropped(blueprint: String) -> void:
+	var data := level.get_building_data(blueprint.trim_prefix("blueprint:"))
+	var bp_name := data.display_name if data != null else blueprint
+	toast.show_message("An enemy dropped a blueprint: %s." % bp_name, 4.0)
 
 
 ## The base is the run. Anything else being removed is ordinary business.
@@ -454,6 +521,8 @@ func _referenced_art() -> Array:
 	paths.append_array(LevelGenerator.POI_FILES.values())
 	paths.append("res://assets/ui/relic.png")
 	paths.append(ExploreFlags.FLAG)
+	paths.append_array(EnemyRenderer.art_paths(enemy_kinds))
+	paths.append_array(CombatEffects.art_paths())
 	for data in level.placeable_buildings:
 		if data != null and data.texture == null:
 			paths.append(data.texture_path)
@@ -710,6 +779,8 @@ func _debug_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("debug_skip_phase"):
 		director.force_phase_end()
 		print("Debug: skipping to the end of the ", "night" if director.is_night else "day")
+	elif event.is_action_pressed("debug_spawn_enemies"):
+		_debug_spawn_enemies()
 	elif event.is_action_pressed("debug_reveal_map"):
 		fog.reveal_all()
 		print("Debug: map revealed")
@@ -720,6 +791,26 @@ func _debug_input(event: InputEvent) -> void:
 	else:
 		return
 	get_viewport().set_input_as_handled()
+
+
+## Ten goblins on the map edge nearest the camera. By day they do not burn
+## (only dawn sets enemies alight), so this works at any time.
+func _debug_spawn_enemies() -> void:
+	var cam: Camera2D = $Camera/Camera2D
+	var cell := level.world_to_cell(cam.global_position)
+	var g := level.grid
+	var gaps := [cell.y, g.size.x - 1 - cell.x, g.size.y - 1 - cell.y, cell.x]   # N, E, S, W
+	var side := 0
+	for n in 4:
+		if gaps[n] < gaps[side]:
+			side = n
+	var goblin := enemies.kind_index("goblin")
+	var made := 0
+	for n in 10:
+		var at := waves.spawn_point(side, false)
+		if at != Vector2.INF and enemies.spawn(goblin, at) != EnemyStore.NONE:
+			made += 1
+	print("Debug: %d goblins from the %s" % [made, Waves.SIDE_NAMES[side]])
 
 
 ## Each grant in one hold is bigger than the last: 100, 125, 156, ... so a few

@@ -11,3 +11,4 @@ max_health = 120.0
 build_work = 10.0
 tags = PackedStringArray("building", "depot")
 allowed_grounds = 655
+threat_priority = 3.0

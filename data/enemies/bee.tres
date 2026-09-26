@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" path="res://enemies/enemy_data.gd" id="1_ed"]
+
+[resource]
+script = ExtResource("1_ed")
+id = "bee"
+display_name = "Bee"
+sprite_idle = "res://assets/npcs/bee.png"
+sprite_attack = "res://assets/npcs/bee_attack.png"
+max_health = 12.0
+move_speed = 70.0
+flying = true
+damage = 3.0
+attack_interval = 0.6
+aggro_range = 72.0
+spawn_cost = 0.6
+first_night = 2
+blueprint_drop_chance = 0.02

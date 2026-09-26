@@ -22,6 +22,11 @@ extends Resource
 @export var build_work := 0.0
 ## For stat targeting, e.g. ["building", "house", "builder_house"].
 @export var tags := PackedStringArray()
+## How much enemies want to destroy it (Stage 4). They pick targets by
+## threat_priority / (distance in tiles + k), so a cluster of valuable buildings
+## can draw them away from the base. 0 = never chosen as a target (still broken
+## through when it blocks the way).
+@export var threat_priority := 2.0
 ## Tiles of fog cleared around it, once, when it is finished. 0 = none.
 ## The watchtower's whole job; any building can have one.
 @export var reveal_radius := 0

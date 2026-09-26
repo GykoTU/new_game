@@ -15,3 +15,4 @@ one_per_touched = true
 is_house = true
 house_for = 0
 allowed_grounds = 671
+threat_priority = 4.0
