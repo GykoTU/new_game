@@ -46,6 +46,9 @@ enum Id {
 	# --- economy
 	SHOP_PRICE,
 	HOUSE_CAPACITY,
+	# --- weapons, appended (Stage 5)
+	CHAIN_COUNT,
+	STUN_DURATION,
 	COUNT,
 }
 
@@ -88,6 +91,8 @@ const _TABLE := [
 	[Id.REPAIR_RATE,         "repair_rate",           1.0,   0.0,   INF],
 	[Id.SHOP_PRICE,          "shop_price",            1.0,   0.1,   INF],
 	[Id.HOUSE_CAPACITY,      "house_capacity",        3.0,   1.0,   64.0],
+	[Id.CHAIN_COUNT,         "chain_count",           0.0,   0.0,   16.0],
+	[Id.STUN_DURATION,       "stun_duration",         0.0,   0.0,   30.0],
 ]
 
 static var _names := PackedStringArray()

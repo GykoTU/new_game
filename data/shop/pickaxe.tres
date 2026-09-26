@@ -15,6 +15,10 @@ id = "pickaxe"
 display_name = "Better Pickaxes"
 description = "+15% miner gather rate per level."
 icon_path = "res://assets/ui/upgrade_pickaxe.png"
+section = 2
+blueprint = "blueprint:pickaxe"
+rarity = 0
+upgrade_group = 1
 tags = PackedStringArray()
 base_cost = Dictionary[int, int]({
 0: 40

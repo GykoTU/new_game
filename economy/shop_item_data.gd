@@ -18,9 +18,30 @@ enum Kind {
 
 ## Which tab of the shop it is in. Buy is paid in gold only, Craft in
 ## resources only: a data rule, checked by a test over the catalogue.
+## Upgrades (appended) holds every upgrade, weapon and worker, in any currency.
 enum Section {
 	BUY,
 	CRAFT,
+	UPGRADES,
+}
+
+## The two lists inside the Upgrades tab.
+enum UpgradeGroup {
+	WEAPONS,
+	WORKERS,
+}
+
+## The two lists inside the Craft tab.
+enum CraftGroup {
+	UTILITY,
+	WEAPONS,
+}
+
+## How rarely its blueprint turns up (Unlocks.pick_findable). Shown as the
+## halo of a dropped blueprint: grey for common, blue for rare.
+enum Rarity {
+	COMMON,
+	RARE,
 }
 
 ## Unique, stable id. Used in save files ("upg:<id>"), so renaming it breaks
@@ -36,6 +57,15 @@ enum Section {
 ## Unlock id the run must know before this shows in the shop, e.g.
 ## "blueprint:depot". Empty = always known.
 @export var blueprint := ""
+## A second unlock needed as well, e.g. a weapon upgrade needs its weapon:
+## "blueprint:cannon". Its blueprint only drops once this is known.
+@export var requires := ""
+## Rarity of `blueprint` when it is found (caches, enemy drops).
+@export var rarity: Rarity = Rarity.COMMON
+## Which list of the Upgrades tab it is in (Section.UPGRADES only).
+@export var upgrade_group: UpgradeGroup = UpgradeGroup.WORKERS
+## Which list of the Craft tab it is in (Section.CRAFT only).
+@export var craft_group: CraftGroup = CraftGroup.UTILITY
 ## Extra tags for price targeting. "shop" and the kind ("worker" / "upgrade" /
 ## "building") are always added, so a sale on ["shop", "upgrade"] needs nothing here.
 @export var tags := PackedStringArray()

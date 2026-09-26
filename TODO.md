@@ -190,20 +190,51 @@ First loop the player can actually watch happen.
 
 ## Stage 5 — Weapons
 
-- [ ] Weapon buildings with `WeaponData`
-- [ ] Projectile SoA store, supercover grid traversal, wall blocking
-- [ ] Friendly fire on units, as a per-projectile flag
-- [ ] Targeting rules (nearest, strongest, first in range)
-- [ ] Behaviour hook system: shared behaviour sets, per-shot scratch slots
-- [ ] Behaviours: bounce, split, pierce, chain, homing, hook
-- [ ] Generation counters and pool ceilings so split/chain cannot run away
-- [ ] Effects as first-class entities (explosions, burning ground) sharing the
+- [x] Weapon buildings with `WeaponData`: arrow tower, cannon, frost, flame,
+      hook, chain cannon (was the sling), whirl
+- [x] Projectile SoA store (cap 800), stepped grid traversal, wall blocking
+- [x] Friendly fire on units, as a per-projectile flag
+- [x] Targeting rules (nearest, strongest, first in range), chosen per
+      building in a panel, saved by cell
+- [x] Behaviour hook system: shared behaviour sets, per-shot scratch slots
+- [x] Behaviours: bounce, split, pierce, chain, homing, hook, knockback, slow,
+      burn, explode, explode enemies, burning ground, orbit, chain ball, long chain
+- [x] Generation counters and pool ceilings so split/chain cannot run away
+- [x] Effects as first-class entities (explosions, burning ground) sharing the
       projectiles' generation counter, pool ceiling and `on_kill`
-- [ ] Bounce: corner hits reflect both velocity components
-- [ ] Explosions: line-of-sight against walls (decided: walls block blasts)
-- [ ] Chained cannonball: swinging tethered motion, blocked by walls,
-      pierces up to `pierce_count` enemies, no bounce
-- [ ] Particles within the entity budget
+- [x] Bounce: corner hits reflect both velocity components
+- [x] Explosions: line-of-sight against walls (decided: walls block blasts)
+- [x] ~~Chained cannonball swinging round its weapon~~ replaced after
+      play-testing by the chain cannon (below)
+- [x] Arrow tower known from the start; the other six are findable
+      blueprints (caches and drops pick at random)
+- [x] Behaviour upgrades in the shop (Upgrades tab, each behind its own blueprint)
+- [x] Burn kills count for the weapon that lit the burn (cinders, drops)
+- [x] Dev shortcut: Ctrl+U learns every blueprint (no longer buys upgrades)
+
+**Play-test fixes**
+- [x] Upgrades tab with Weapons / Workers sub-tabs
+- [x] Enemy drops leave a blueprint cache for the explorer
+- [x] Every upgrade needs its own blueprint (one blueprint = every level)
+- [x] Rarities: common and rare (the one-off weapon upgrades are rare)
+- [x] Dropped blueprints glow grey (common) or blue (rare)
+- [x] Dev shortcut: Ctrl+I makes buildings invincible (toggle)
+- [x] Shovel: mark buildings; a builder digs them out for half their cost
+- [x] Arrows split at their first hit
+- [x] Shop scrolls, at most three rows tall
+- [x] Cannon bounce is an upgrade only (it always was; Ctrl+U bought it)
+- [x] Sling renamed to chain cannon
+- [x] Chain cannon: catches, drags and stuns, no damage; flies its full
+      range instead of stopping at the aim point
+- [x] Craft tab split into Utility and Weapons sub-tabs
+- [x] Paying-out chain (rare): the chain lengthens as the balls fly
+- [x] "First" targeting no longer skips enemies without a target
+- [ ] Particles within the entity budget (nothing uses particles yet: every
+      effect is a sprite strip or drawn shape)
+- [ ] Balancing after play-testing: every weapon's numbers, prices, the 1 in 4
+      burning-ground chance, impact damage
+- [ ] Bounce, blast shielding and wall impacts only meet the map edge until
+      Stage 6 builds walls
 
 ## Stage 6 — Walls, roads, expansion
 
@@ -281,6 +312,34 @@ Full paths, 32x32 unless stated. Ticked = the file exists.
 - [ ] `assets/effects/enemy_death.png` — strip; without it, a fading ring
 - [ ] `assets/effects/burn.png` — flame over burning enemies; without it, the tint
 
+**5** (the building sprites matter most; everything else has a stand-in)
+- [x] `assets/buildings/weapons/arrow_tower.png`
+- [x] `assets/buildings/weapons/cannon.png`
+- [x] `assets/buildings/weapons/frost_tower.png`
+- [x] `assets/buildings/weapons/flame_tower.png`
+- [x] `assets/buildings/weapons/hook_tower.png`
+- [x] `assets/buildings/weapons/cannon_chain.png` — the chain cannon
+- [x] `assets/buildings/weapons/whirlblade_tower.png` — the whirl tower
+- [ ] `assets/projectiles/arrow.png`, `cannonball.png`, `frost_bolt.png`,
+      `flame.png`, `hook.png`, `cannonball_chain.png`, `whirlblade.png` — drawn pointing
+      right; a horizontal strip animates; without one, a coloured dot
+- [ ] `assets/effects/explosion.png` — strip of 64x64 frames, stretched to the
+      blast; without it, an expanding disc and ring
+- [ ] `assets/effects/burning_ground.png` — strip, looped, stretched to the
+      patch; without it, a flickering orange patch
+- [ ] `assets/effects/frost_hit.png` — optional strip where frost lands
+
+**5 fixes**
+- [ ] `assets/ui/shovel.png` — the shovel in the item bar
+- [ ] `assets/ui/shovel_mark.png` — optional, over a building marked for digging;
+      without it, a brown outline
+- [ ] `assets/buildings/poi/blueprint_dropped.png` — optional; without it, the
+      blueprint cache's sprite (the halo is drawn in code)
+- [ ] `assets/effects/stun.png` — optional strip of 16x16 frames over stunned
+      enemies; without it, three circling dots
+- [ ] `assets/ui/tab_weapons.png`, `assets/ui/tab_workers.png`,
+      `assets/ui/tab_utility.png` — optional 16x16 icons for the sub-tabs
+
 **3b**
 - [x] `assets/npcs/explorer.png` — or a horizontal strip of 32x32 frames
 - [ ] `assets/npcs/explorer_walk.png` — optional walk strip, like `carrier_walk.png`
@@ -298,6 +357,7 @@ Full paths, 32x32 unless stated. Ticked = the file exists.
 ## Open questions
 
 - Chained cannonball hitting a wall: assumed to end the shot (no bounce).
+  Implemented that way in Stage 5; say if it should do something else.
 - Worker price growth counts purchases, not workers alive. Revisit once
   workers can die.
 

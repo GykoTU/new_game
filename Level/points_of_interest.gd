@@ -7,8 +7,11 @@ extends RefCounted
 ## the moment its tile is explored (by anyone -- a watchtower counts), and
 ## OPENED when the explorer has stood beside it for `open_seconds`:
 ##
-##   blueprint cache  teaches the next Unlocks.FINDABLE blueprint, then vanishes;
-##                    relics instead once every findable blueprint is known
+##   blueprint cache  teaches a random findable blueprint (Unlocks.pick_findable),
+##                    then vanishes; relics instead once none is left
+##   dropped blueprint  left by an enemy (add_dropped): holds the blueprint
+##                    picked when it dropped, reserved until the explorer
+##                    brings it in. Glows grey (common) or blue (rare).
 ##   relic cache      relics, then vanishes
 ##   NPC house        placeholder message; stays, visited once
 ##   fruit tree       placeholder message; stays, visited once
@@ -28,6 +31,10 @@ const BLUEPRINT_CACHE := "poi_blueprint_cache"
 const RELIC_CACHE := "poi_relic_cache"
 const NPC_HOUSE := "poi_npc_house"
 const FRUIT_TREE := "poi_fruit_tree"
+const DROPPED := "poi_blueprint_dropped"
+
+## How far from where an enemy fell a dropped cache may land, in tiles.
+const DROP_SEARCH := 3
 
 ## Seconds the explorer spends at one before it gives up its contents.
 var open_seconds := 3.0
@@ -46,6 +53,7 @@ var relics_found := 0
 var _pois := PackedInt32Array()   # every live point of interest (building ids)
 var _seen := {}                   # id -> true once its tile was explored
 var _visited := {}                # id -> true for the ones that stay (NPC, fruit tree)
+var _contents := {}               # dropped cache id -> the blueprint it holds
 var _rng := RandomNumberGenerator.new()
 
 
@@ -72,6 +80,7 @@ func _on_level_generated() -> void:
 	_pois.clear()
 	_seen.clear()
 	_visited.clear()
+	_contents.clear()
 	for id in level.store.alive_ids():
 		if is_poi(id):
 			_pois.append(id)
@@ -114,6 +123,10 @@ func _on_revealed(_indices: PackedInt32Array) -> void:
 
 
 func _on_building_removed(id: int, _type: String, _cell: Vector2i) -> void:
+	if _contents.has(id):
+		# Gone without being opened: the blueprint can be found again.
+		unlocks.release_reservation(_contents[id])
+		_contents.erase(id)
 	var at := _pois.find(id)
 	if at != -1:
 		_pois.remove_at(at)
@@ -130,12 +143,18 @@ func open(id: int) -> String:
 	var message := ""
 	match type:
 		BLUEPRINT_CACHE:
-			var blueprint := unlocks.next_findable()
+			var blueprint := unlocks.pick_findable(_rng)
 			if blueprint != "":
 				unlocks.add(blueprint)
-				message = "Blueprint found: %s. Craft it in the shop." % _blueprint_name(blueprint)
+				message = _found(blueprint)
 			else:
 				message = _grant_relics(relics_instead_of_blueprint, "Nothing left to learn here, but")
+			level.remove_building(level.store.get_cell(id))
+		DROPPED:
+			var blueprint: String = _contents.get(id, "")
+			_contents.erase(id)
+			unlocks.add(blueprint)
+			message = _found(blueprint) if blueprint != "" else "Nothing here."
 			level.remove_building(level.store.get_cell(id))
 		RELIC_CACHE:
 			message = _grant_relics(_rng.randi_range(relics_per_cache.x, relics_per_cache.y), "")
@@ -169,10 +188,53 @@ func take_pending_relics() -> int:
 	return n
 
 
-func _blueprint_name(blueprint: String) -> String:
-	var type := blueprint.trim_prefix("blueprint:")
-	var data := level.get_building_data(type)
-	return data.display_name if data != null else type.capitalize()
+func _found(blueprint: String) -> String:
+	var rare := unlocks.rarity_of(blueprint) == ShopItemData.Rarity.RARE
+	return "%s found: %s. It is in the shop now." % [
+		"Rare blueprint" if rare else "Blueprint", unlocks.name_of(blueprint)]
+
+
+# --- Dropped blueprints ---------------------------------------------------------
+
+## An enemy dropped `blueprint` (already reserved) at `at`: a cache on the
+## nearest free, walkable tile within DROP_SEARCH tiles. Returns its id, or
+## NONE if there was no room (the blueprint goes back into the pool).
+func add_dropped(at: Vector2, blueprint: String) -> int:
+	var centre := level.world_to_cell(at)
+	var g := level.grid
+	for r in DROP_SEARCH + 1:
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
+					continue   # this ring only
+				var c := centre + Vector2i(dx, dy)
+				if not g.in_bounds(c) or g.is_occupied(c) or g.blocks_unit(c):
+					continue
+				var id := level.add_feature(DROPPED, c)
+				if id == BuildingStore.NONE:
+					continue
+				_pois.append(id)
+				_contents[id] = blueprint
+				if g.is_explored(c):
+					_seen[id] = true
+					spotted.emit(id, DROPPED)
+				return id
+	unlocks.release_reservation(blueprint)
+	return BuildingStore.NONE
+
+
+## Every dropped cache still on the map: [world position, rarity], for the
+## halos.
+func dropped() -> Array:
+	var out := []
+	for id in _contents:
+		if level.store.is_alive(id):
+			out.append([level.cell_to_world(level.store.get_cell(id)), unlocks.rarity_of(_contents[id])])
+	return out
+
+
+func contents_of(id: int) -> String:
+	return String(_contents.get(id, ""))
 
 
 # --- Saving -------------------------------------------------------------------
@@ -185,7 +247,16 @@ func get_save_data() -> Dictionary:
 		if level.store.is_alive(id):
 			visited.append(level.store.get_cell(id))
 	return {"visited": visited, "pending": relics_pending, "found": relics_found,
-		"rng_state": _rng.state}
+		"rng_state": _rng.state, "dropped": _dropped_save()}
+
+
+func _dropped_save() -> Array:
+	var out := []
+	for id in _contents:
+		if level.store.is_alive(id):
+			var c := level.store.get_cell(id)
+			out.append([c.x, c.y, _contents[id]])
+	return out
 
 
 ## Call after the level has loaded (level_generated has rebuilt the list).
@@ -200,3 +271,10 @@ func load_save_data(data: Dictionary) -> void:
 	relics_found = maxi(int(data.get("found", 0)), 0)
 	if data.has("rng_state"):
 		_rng.state = int(data["rng_state"])
+	_contents.clear()
+	for d in data.get("dropped", []):
+		var c := Vector2i(int(d[0]), int(d[1]))
+		if level.grid.in_bounds(c):
+			var id := level.grid.get_occupant(c)
+			if is_poi(id) and level.store.get_type(id) == DROPPED:
+				_contents[id] = String(d[2])

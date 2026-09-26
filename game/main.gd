@@ -96,6 +96,20 @@ var fog_renderer: FogRenderer
 var enemies := EnemySystem.new()
 var waves := Waves.new()
 var defence := BaseDefence.new()
+## Stage 5: weapon buildings, their shots and effects.
+var weapons := WeaponSystem.new()
+var projectile_renderer: ProjectileRenderer
+var weapon_effects: WeaponEffects
+var weapon_panel
+## The shovel's marks (Stage 5 fixes).
+var demolition := Demolition.new()
+var dig_marks: DigMarks
+## Grey and blue glows round dropped blueprints.
+var cache_halos: CacheHalos
+## Which item is being painted with: the water bucket (lava) or the shovel.
+var _paint_tool := ""
+## The weapon building whose panel is open, or -1.
+var _selected_weapon := -1
 ## Drawing for the above. Created in _ready.
 var enemy_renderer: EnemyRenderer
 var combat_effects: CombatEffects
@@ -131,6 +145,8 @@ var _paint_last := Vector2i(-1, -1)
 
 func _ready() -> void:
 	shop = Shop.new(shop_catalogue, economy, roster, modifiers)
+	# The findable pool: every blueprint in the shop a run does not start with.
+	unlocks.configure(shop_catalogue)
 	for type in UNIT_TYPES:
 		type_blocks[type] = StatBlock.new(modifiers, PackedStringArray(UNIT_TYPES[type]["tags"]),
 			UNIT_TYPES[type].get("base", {}))
@@ -150,6 +166,10 @@ func _ready() -> void:
 	enemies.setup(level, units, unlocks, enemy_kinds)
 	waves.setup(enemies, level)
 	defence.setup(level, enemies, modifiers)
+	weapons.setup(level, enemies, units, unlocks, modifiers)
+	demolition.setup(level, economy, shop_catalogue)
+	units.demolition = demolition
+	demolition.dug.connect(_on_dug)
 	enemies.blueprint_dropped.connect(_on_blueprint_dropped)
 	waves.night_planned.connect(_on_night_planned)
 	units.unit_killed.connect(_on_unit_killed)
@@ -170,6 +190,11 @@ func _ready() -> void:
 	run_summary.name = "RunSummary"
 	_add_ui(run_summary)
 	run_summary.return_pressed.connect(_return_to_title)
+	weapon_panel = preload("res://UI/weapon_panel.gd").new()
+	weapon_panel.name = "WeaponPanel"
+	_add_ui(weapon_panel)
+	weapon_panel.mode_pressed.connect(_on_weapon_mode_pressed)
+	weapon_panel.closed.connect(_deselect_weapon)
 	# A CanvasModulate tints its own canvas layer, so as a child of Main it
 	# colours the world (level, marks, units) and leaves every UI layer alone.
 	_tint = CanvasModulate.new()
@@ -182,6 +207,16 @@ func _ready() -> void:
 	# crisp on top of it.
 	move_child(building_glow, unit_renderer.get_index())
 	building_glow.bind(level)
+	cache_halos = CacheHalos.new()
+	cache_halos.name = "CacheHalos"
+	add_child(cache_halos)
+	move_child(cache_halos, building_glow.get_index() + 1)
+	cache_halos.bind(pois)
+	dig_marks = DigMarks.new()
+	dig_marks.name = "DigMarks"
+	add_child(dig_marks)
+	move_child(dig_marks, cache_halos.get_index() + 1)
+	dig_marks.bind(demolition, level)
 	# Over everything in the world (z_index 2), under the placer's ghost.
 	fog_renderer = FogRenderer.new()
 	fog_renderer.name = "Fog"
@@ -194,10 +229,20 @@ func _ready() -> void:
 	add_child(enemy_renderer)
 	move_child(enemy_renderer, unit_renderer.get_index() + 1)
 	enemy_renderer.bind(enemy_kinds)
+	projectile_renderer = ProjectileRenderer.new()
+	projectile_renderer.name = "ProjectileRenderer"
+	add_child(projectile_renderer)
+	move_child(projectile_renderer, enemy_renderer.get_index() + 1)
+	projectile_renderer.bind(weapons.types)
+	weapon_effects = WeaponEffects.new()
+	weapon_effects.name = "WeaponEffects"
+	add_child(weapon_effects)
+	move_child(weapon_effects, projectile_renderer.get_index() + 1)
+	weapon_effects.bind(weapons)
 	combat_effects = CombatEffects.new()
 	combat_effects.name = "CombatEffects"
 	add_child(combat_effects)
-	move_child(combat_effects, enemy_renderer.get_index() + 1)
+	move_child(combat_effects, weapon_effects.get_index() + 1)
 	health_bars = HealthBars.new()
 	health_bars.name = "HealthBars"
 	add_child(health_bars)
@@ -264,9 +309,12 @@ func _process(delta: float) -> void:
 	var light := director.light_colour()
 	_tint.color = light
 	building_glow.set_night(director.darkness(), light)
+	cache_halos.refresh(delta, light)
 	fog_renderer.refresh()
 	explore_flags.refresh()
 	enemy_renderer.draw_enemies(enemies, clock.tick_count)
+	projectile_renderer.draw_shots(weapons.projectiles, clock.tick_count, light)
+	weapon_effects.refresh(clock.tick_count, light)
 	combat_effects.refresh(defence, enemies, clock.tick_count, light)
 	health_bars.refresh()
 	day_bar.refresh()
@@ -281,7 +329,9 @@ func _process(delta: float) -> void:
 ##   4. fog -- units that walked into a new tile look around (FogOfWar.step_units)
 ##   5. enemies -- fields, hash, targets, moving, hitting, burning (EnemySystem.step)
 ##   6. defence -- the base zaps, using the hash step 5 built (BaseDefence.step)
-##   7. forest -- stumps rot, trees regrow (Forest.step)
+##   7. weapons -- aim and fire, then shots move and hit, then blasts and
+##      burning ground (WeaponSystem.step), also on step 5's hash
+##   8. forest -- stumps rot, trees regrow (Forest.step)
 ## Systems land here as they are built, in the order they must run. The director
 ## goes first so that a phase change takes effect on the same tick the units
 ## decide what to do with it.
@@ -295,6 +345,8 @@ func _simulate(dt: float) -> void:
 	enemies.tick = clock.tick_count
 	enemies.step(dt)
 	defence.step(clock.tick_count)
+	weapons.tick = clock.tick_count
+	weapons.step(dt)
 	forest.step(clock.tick_count)
 
 
@@ -311,6 +363,8 @@ func _start_new_run() -> void:
 	units.clear()
 	enemies.clear()
 	defence.clear()
+	weapons.clear()
+	_deselect_weapon()
 	modifiers.clear()
 	shop.reset()
 	roster.clear()
@@ -361,6 +415,8 @@ func _load_run(save: Dictionary) -> bool:
 	lava.load_save_data(save.get("lava", {}))
 	pois.load_save_data(save.get("poi", {}))
 	enemies.load_save_data(save.get("enemies", {}))
+	weapons.load_save_data(save.get("weapons", {}))
+	demolition.load_save_data(save.get("demolition", {}))
 	waves.load_save_data(save.get("waves", {}))
 	director.load_save_data(save.get("director", {}))
 	units.night = director.is_night
@@ -395,6 +451,8 @@ func save_run() -> void:
 		"poi": pois.get_save_data(),
 		"enemies": enemies.get_save_data(),
 		"waves": waves.get_save_data(),
+		"weapons": weapons.get_save_data(),
+		"demolition": demolition.get_save_data(),
 		# progression joins this as it is built. SaveManager neither knows nor
 		# cares what these keys mean.
 	})
@@ -447,14 +505,29 @@ func _on_unit_killed(kind: int) -> void:
 	toast.show_message("Your %s was killed." % WorkerRoster.display_of(kind).to_lower(), 3.0)
 
 
-func _on_blueprint_dropped(blueprint: String) -> void:
-	var data := level.get_building_data(blueprint.trim_prefix("blueprint:"))
-	var bp_name := data.display_name if data != null else blueprint
-	toast.show_message("An enemy dropped a blueprint: %s." % bp_name, 4.0)
+## A kill dropped a blueprint: a cache where it fell, glowing by rarity, for
+## the explorer to bring in.
+func _on_blueprint_dropped(blueprint: String, at: Vector2) -> void:
+	if pois.add_dropped(at, blueprint) == BuildingStore.NONE:
+		return   # no room: it goes back into the pool
+	var rare := unlocks.rarity_of(blueprint) == ShopItemData.Rarity.RARE
+	toast.show_message("An enemy dropped a %s blueprint. Your explorer can bring it in." \
+		% ("rare" if rare else "common"), 4.0)
+
+
+func _on_dug(type: String, refund: Dictionary) -> void:
+	var data := level.get_building_data(type)
+	var parts := PackedStringArray()
+	for k in refund:
+		parts.append("%d %s" % [refund[k], ResourceKind.display_of(k)])
+	toast.show_message("Dug out the %s.%s" % [data.display_name if data != null else type,
+		(" Back: " + ", ".join(parts) + ".") if not parts.is_empty() else ""], 2.5)
 
 
 ## The base is the run. Anything else being removed is ordinary business.
-func _on_building_removed(_id: int, type: String, _cell: Vector2i) -> void:
+func _on_building_removed(id: int, type: String, _cell: Vector2i) -> void:
+	if id == _selected_weapon:
+		_deselect_weapon()
 	if type == "base" and not _run_over:
 		_end_run()
 
@@ -523,6 +596,10 @@ func _referenced_art() -> Array:
 	paths.append(ExploreFlags.FLAG)
 	paths.append_array(EnemyRenderer.art_paths(enemy_kinds))
 	paths.append_array(CombatEffects.art_paths())
+	paths.append_array(ProjectileRenderer.art_paths(weapons.types))
+	paths.append_array(WeaponEffects.art_paths())
+	paths.append(DigMarks.MARK)
+	paths.append_array(preload("res://UI/shop_ui.gd").art_paths())
 	for data in level.placeable_buildings:
 		if data != null and data.texture == null:
 			paths.append(data.texture_path)
@@ -611,6 +688,8 @@ func _focus_camera(world: Vector2) -> void:
 
 func _on_poi_spotted(id: int, type: String) -> void:
 	units.on_poi_spotted(id, type)
+	if type == PointsOfInterest.DROPPED:
+		return   # the drop already said so
 	var what: String = {PointsOfInterest.BLUEPRINT_CACHE: "a blueprint cache",
 		PointsOfInterest.RELIC_CACHE: "a relic cache", PointsOfInterest.NPC_HOUSE: "a house",
 		PointsOfInterest.FRUIT_TREE: "a strange tree"}.get(type, "something")
@@ -651,7 +730,12 @@ func _on_item_pressed(id: String) -> void:
 		return
 	_end_dispatch()
 	var cancel := Keybinds.describe_action("cancel_placement")
-	if id == LavaWorks.ITEM_WATER_BUCKET:
+	if id == Demolition.ITEM:
+		_paint_tool = "shovel"
+		build_placer.start_paint("res://assets/ui/shovel.png", _can_dig_cell)
+		toast.show_message("Click buildings to mark them for digging out.  %s: done." % cancel, 4.0)
+	elif id == LavaWorks.ITEM_WATER_BUCKET:
+		_paint_tool = "bucket"
 		build_placer.start_paint("res://assets/ui/bucket_full.png", _can_mark_cell)
 		toast.show_message("Drag over lava to mark it for cobble.  %s: done." % cancel, 4.0)
 	elif id == LavaWorks.ITEM_BUCKET and not lava.has_water_bucket():
@@ -676,12 +760,26 @@ func _on_tile_picked(cell: Vector2i) -> void:
 		toast.show_message("A builder will fill the bucket here.", 2.0)
 
 
-## A stroke with the water bucket in hand: the first tile decides whether this
-## stroke marks or unmarks, and dragging carries on with the same choice.
+## A building the shovel can mark (or unmark).
+func _can_dig_cell(cell: Vector2i) -> bool:
+	return level.grid.in_bounds(cell) and fog.is_explored(cell) \
+		and demolition.can_dig(level.grid.get_occupant(cell))
+
+
+## A stroke with the water bucket or the shovel in hand: the first tile decides
+## whether this stroke marks or unmarks, and dragging carries on with the same
+## choice.
 func _on_paint_started(cell: Vector2i) -> void:
 	if not level.grid.in_bounds(cell):
 		return
 	if not fog.is_explored(cell):
+		return
+	if _paint_tool == "shovel":
+		var b := level.grid.get_occupant(cell)
+		if demolition.can_dig(b):
+			_paint_on = not demolition.is_marked(b)
+			demolition.set_mark(b, _paint_on)
+		_paint_last = cell
 		return
 	var i := level.grid.index(cell)
 	_paint_on = not lava.is_marked(i)
@@ -698,9 +796,52 @@ func _on_paint_moved(cell: Vector2i) -> void:
 	var steps := maxi(absi(cell.x - from.x), absi(cell.y - from.y))
 	for n in range(1, steps + 1):
 		var c := Vector2i((Vector2(from).lerp(Vector2(cell), float(n) / steps)).round())
-		if fog.is_explored(c):
+		if not fog.is_explored(c):
+			continue
+		if _paint_tool == "shovel":
+			demolition.set_mark(level.grid.get_occupant(c), _paint_on)
+		else:
 			lava.set_mark(level.grid.index(c), _paint_on)
 	_paint_last = cell
+
+
+## Left click on a finished weapon building opens its panel and shows its
+## range. Construction sites and fogged tiles do not count.
+func _weapon_click() -> bool:
+	var cell := level.world_to_cell(get_global_mouse_position())
+	if not fog.is_explored(cell) or not level.grid.in_bounds(cell):
+		return false
+	var id := level.grid.get_occupant(cell)
+	if not weapons.is_weapon(id) or not level.store.is_complete(id):
+		return false
+	_selected_weapon = id
+	weapon_effects.selected = id
+	var t := weapons.type_of(level.store.get_type(id))
+	var d := weapons.types[t]
+	var numbers := "Damage %s   Range %.1f tiles" % [_num(weapons.stat(t, Stats.Id.DAMAGE)),
+		weapons.stat(t, Stats.Id.RANGE) / 32.0]
+	if not d.persistent:
+		numbers += "\n%s shots a second" % _num(weapons.stat(t, Stats.Id.FIRE_RATE)
+			* roundf(weapons.stat(t, Stats.Id.PROJECTILE_COUNT)))
+	weapon_panel.show_weapon(d.display_name, numbers, weapons.mode_of(id), not d.persistent)
+	return true
+
+
+static func _num(v: float) -> String:
+	return str(int(v)) if is_equal_approx(v, roundf(v)) else "%.1f" % v
+
+
+func _on_weapon_mode_pressed() -> void:
+	if _selected_weapon != -1:
+		weapon_panel.set_mode(weapons.cycle_mode(_selected_weapon))
+
+
+func _deselect_weapon() -> void:
+	_selected_weapon = -1
+	if weapon_effects != null:
+		weapon_effects.selected = -1
+	if weapon_panel != null and weapon_panel.visible:
+		weapon_panel.hide_panel()
 
 
 ## Left click on a plain tree marks it for chopping (or unmarks it). Builders
@@ -745,7 +886,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
-	if event.is_action_pressed("left_click") and not build_placer.is_active() and _tree_click():
+	if event.is_action_pressed("left_click") and not build_placer.is_active():
+		if _weapon_click():
+			get_viewport().set_input_as_handled()
+			return
+		_deselect_weapon()   # a click anywhere else closes the weapon panel
+		if _tree_click():
+			get_viewport().set_input_as_handled()
+			return
+
+	if _selected_weapon != -1 and (event.is_action_pressed("cancel_placement")
+			or event.is_action_pressed("ui_cancel")):
+		_deselect_weapon()
 		get_viewport().set_input_as_handled()
 		return
 
@@ -784,6 +936,15 @@ func _debug_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("debug_reveal_map"):
 		fog.reveal_all()
 		print("Debug: map revealed")
+	elif event.is_action_pressed("debug_unlock_all"):
+		# Blueprints only: upgrades still have to be bought (Ctrl+G pays).
+		for id in unlocks.findable:
+			unlocks.add(id)
+		toast.show_message("Debug: every blueprint learned. Buy upgrades in the shop.", 2.5)
+	elif event.is_action_pressed("debug_invincible"):
+		level.store.invincible = not level.store.invincible
+		toast.show_message("Debug: buildings are %s." % ("invincible" if level.store.invincible
+			else "vulnerable again"), 2.5)
 	elif event.is_action_pressed("debug_kill_base"):
 		if level.base_cell != LevelGenerator.INVALID_CELL:
 			level.remove_building(level.base_cell)   # ends the run (_on_building_removed)

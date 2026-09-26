@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = "chain_cannon_long"
+display_name = "Paying-out Chain"
+description = "The chain lengthens as the balls fly, sweeping a wider path."
+icon_path = "res://assets/buildings/weapons/cannon_chain.png"
+kind = 3
+section = 2
+blueprint = "blueprint:chain_cannon_long"
+requires = "blueprint:chain_cannon"
+rarity = 1
+upgrade_group = 0
+tags = PackedStringArray("weapon", "chain_cannon")
+base_cost = Dictionary[int, int]({
+5: 20,
+2: 12
+})
+max_level = 1
+item_id = "behaviour.chain_cannon.long_chain"

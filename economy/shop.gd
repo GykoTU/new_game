@@ -94,10 +94,10 @@ func block_reason(item: ShopItemData) -> String:
 	return ""
 
 
-## True if the run knows this item's blueprint (or it needs none). The Craft
-## tab hides items that are not known.
+## True if the run knows this item's blueprint (or it needs none), and what
+## it `requires`. The shop hides items that are not known.
 func is_known(item: ShopItemData) -> bool:
-	return unlocks == null or unlocks.has(item.blueprint)
+	return unlocks == null or (unlocks.has(item.blueprint) and unlocks.has(item.requires))
 
 
 func can_buy(item: ShopItemData) -> bool:

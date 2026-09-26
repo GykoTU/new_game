@@ -61,6 +61,9 @@ const POI_FILES := {
 	"poi_relic_cache": "res://assets/buildings/poi/relic_cache.png",
 	"poi_npc_house": "res://assets/buildings/poi/npc_house.png",
 	"poi_fruit_tree": "res://assets/buildings/poi/tree_fruit_special.png",
+	# Never generated: what an enemy leaves when it drops a blueprint. Falls
+	# back to the blueprint cache's sprite until its own exists.
+	"poi_blueprint_dropped": "res://assets/buildings/poi/blueprint_dropped.png",
 }
 
 ## Environment patches: size range and which mine (if any) belongs in them.
@@ -499,6 +502,8 @@ func _load_assets() -> bool:
 		_building_textures[type] = tex
 	for type in POI_FILES:
 		_building_textures[type] = Art.texture(POI_FILES[type])
+	if not Art.exists(POI_FILES["poi_blueprint_dropped"]):
+		_building_textures["poi_blueprint_dropped"] = Art.texture(POI_FILES["poi_blueprint_cache"])
 
 	return true
 

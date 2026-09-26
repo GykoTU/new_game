@@ -98,16 +98,28 @@ up. Player-set builder priorities are planned.
   commutes), so miners never outnumber miner beds.
 - Future upgrades raise occupancy, and the building visibly expands.
 
-## Shop: Buy and Craft (decided)
+## Shop: Buy, Craft and Upgrades (decided)
 
-The shop has two sections:
+The shop has three tabs:
 
-- **Buy** — paid in **gold**: NPCs and upgrades.
-- **Craft** — paid in **resources**: buildings (depot, roads, walls, weapons)
-  and items (bucket).
+- **Buy** — paid in **gold**: workers.
+- **Craft** — paid in **resources**, two sub-tabs: **Utility** (houses,
+  depot, watchtower, city hall, bucket, shovel) and **Weapons**.
+- **Upgrades** — two sub-tabs, **Weapons** and **Workers**.
 
-Crafting needs a **blueprint**. Enemies and points of interest award
-blueprints. Items without a known blueprint are **hidden** from the Craft tab.
+Crafted buildings and **every upgrade** need a **blueprint**; one blueprint
+unlocks every level of an upgrade. Blueprints come from blueprint caches and
+from enemies. They are **common** or **rare**: the one-off weapon upgrades are
+rare, everything else is common. A weapon's upgrades only turn up once the
+weapon is known. What isn't known is **hidden**. The shop scrolls, at most
+three rows tall.
+
+An enemy that drops a blueprint leaves a **cache** where it fell, glowing
+**grey** (common) or **blue** (rare). The explorer brings it in by day; it
+stays until then.
+
+The **shovel** (an item, like the bucket): mark buildings, and a builder digs
+each one out; half of what it cost to craft comes back. Not the base.
 Sales work in both sections (a SHOP_PRICE modifier, already built).
 
 ## Buildings (decided)
@@ -155,9 +167,43 @@ Sales work in both sections (a SHOP_PRICE modifier, already built).
 - A worker out in the open (a builder repairing at night) gets chased and
   hit, and **dies** at 0 health — it is gone, and its bed is free again.
 - **The base fights back**: it zaps the nearest enemy in range about once a
-  second. Weapon buildings come in Stage 5.
+  second. Weapon buildings do the real work (below).
 - **Dawn burns** every enemy still alive within a few seconds.
 - A killed enemy sometimes drops a **blueprint** the run doesn't know yet.
+
+## Weapons (decided)
+
+- **Seven weapon buildings**, built like any other building (crafted, then
+  placed and built by a builder):
+  - **Arrow tower** — fast arrows that pierce one enemy. Every run knows it.
+  - **Cannon** — slow shells that explode where they land and fling enemies
+    back. Aims at the enemy closest to what it is attacking.
+  - **Frost tower** — bolts that slow what they hit.
+  - **Flame tower** — short-range flames that set enemies alight; some leave
+    the ground burning for a few seconds.
+  - **Hook tower** — hooks the strongest enemy in range and drags it in.
+  - **Chain cannon** — fires two chained cannonballs at an enemy. They fly
+    their full range, past the target, hurt nothing, but catch the enemies
+    in their path (up to 6), drag them along stunned and drop them stunned
+    for 2 s where the flight ends.
+  - **Whirl tower** — blades circling it while enemies are near.
+- The other six are **found**: blueprint caches and enemy drops teach them in
+  a random order, so every run's arsenal differs.
+- **Upgrades** are in the shop's Upgrades tab once their blueprint is found
+  and the weapon is known: number upgrades (more pierce, bigger blasts, more
+  enemies caught...) and rare **behaviour upgrades** that change what the
+  shots do: split arrows (they split at the first enemy they hit), seeking
+  arrows, bouncing shells, volatile foes (enemies the cannon kills explode),
+  a chilling chain for frost, cinders (enemies that burn to death explode),
+  and a paying-out chain for the chain cannon (the chain lengthens as it
+  flies, sweeping a wider path).
+- **Target mode per building**: click a weapon to see its range and choose
+  what it shoots: nearest, strongest, or first (closest to the building it is
+  attacking). The whirl tower doesn't aim.
+- **Friendly fire**: shots, blasts and burning ground hurt workers who are
+  outside. Where weapons stand, and where workers walk at night, matters.
+- **Walls** (Stage 6) will stop shots and shield from blasts; a flung enemy
+  that hits a wall is hurt.
 
 ## The end of a run (decided)
 
@@ -183,8 +229,9 @@ Sales work in both sections (a SHOP_PRICE modifier, already built).
   dawn.
 - **Points of interest** hide under the fog. When one comes into view the
   explorer detours to it on its own, spends 3 seconds, and:
-  - a **blueprint cache** teaches the **watchtower**, then the **city hall**;
-    once both are known it holds relics instead;
+  - a **blueprint cache** teaches a blueprint the run doesn't know yet, at
+    random: the **watchtower**, the **city hall** or one of the six findable
+    **weapons**; once all are known it holds relics instead;
   - a **relic cache** holds 1–3 **relics**;
   - an **NPC living in a house** and a **special fruit tree** are placeholders
     for now: visited once, they only show a message. *Their effects are open.*

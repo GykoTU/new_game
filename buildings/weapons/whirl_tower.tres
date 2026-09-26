@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="BuildingData" format=3]
+
+[ext_resource type="Script" path="res://buildings/building_data.gd" id="1_bd"]
+[ext_resource type="Resource" path="res://data/weapons/whirl_tower.tres" id="2_wd"]
+
+[resource]
+script = ExtResource("1_bd")
+id = "whirl_tower"
+display_name = "Whirl Tower"
+texture_path = "res://assets/buildings/weapons/whirlblade_tower.png"
+max_health = 120.0
+build_work = 12.0
+tags = PackedStringArray("building", "weapon", "whirl_tower")
+threat_priority = 3.0
+weapon = ExtResource("2_wd")
+allowed_grounds = 655

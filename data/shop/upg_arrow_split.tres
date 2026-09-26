@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = "arrow_split"
+display_name = "Split Arrows"
+description = "Arrows split in two when they hit."
+icon_path = "res://assets/buildings/weapons/arrow_tower.png"
+kind = 3
+section = 2
+blueprint = "blueprint:arrow_split"
+rarity = 1
+upgrade_group = 0
+requires = "blueprint:arrow_tower"
+tags = PackedStringArray("weapon", "arrow_tower")
+base_cost = Dictionary[int, int]({
+5: 20,
+1: 5
+})
+max_level = 1
+item_id = "behaviour.arrow_tower.split"

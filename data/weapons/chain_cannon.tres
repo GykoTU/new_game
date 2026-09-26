@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://weapons/weapon_data.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "chain_cannon"
+display_name = "Chain Cannon"
+default_target = 2
+tags = PackedStringArray("weapon", "chain_cannon")
+base_stats = Dictionary[int, float]({
+0: 0.0,
+1: 0.4,
+2: 240.0,
+3: 200.0,
+5: 2.5,
+6: 6.0,
+26: 2.0
+})
+behaviours = PackedStringArray("chain_ball")
+friendly_fire = false
+spread = 12.0
+projectile_sprite = "res://assets/projectiles/cannonball_chain.png"
+projectile_color = Color(0.3, 0.3, 0.33, 1)
+projectile_radius = 14.0
+rotate_sprite = false
+spin_speed = 9.0
+draw_split = true

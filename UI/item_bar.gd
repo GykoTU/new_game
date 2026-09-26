@@ -20,6 +20,10 @@ const ITEMS := [
 		["item:bucket", "Bucket (empty)", "res://assets/ui/bucket_empty.png",
 			"Click it, then click a water tile: a builder goes there and fills it."],
 	],
+	[
+		["item:shovel", "Shovel", "res://assets/ui/shovel.png",
+			"Click it, then click buildings to mark them (again to unmark). A builder digs a marked building out; half its crafting cost comes back."],
+	],
 ]
 
 ## Whole multiples of 32 px: the frame at 2x, the item at 1x.

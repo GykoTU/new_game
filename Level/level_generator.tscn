@@ -11,6 +11,14 @@
 [ext_resource type="Resource" path="res://buildings/watchtower.tres" id="9_wtower"]
 [ext_resource type="Resource" path="res://buildings/city_hall.tres" id="10_chall"]
 
+[ext_resource type="Resource" path="res://buildings/weapons/arrow_tower.tres" id="20_w"]
+[ext_resource type="Resource" path="res://buildings/weapons/cannon.tres" id="21_w"]
+[ext_resource type="Resource" path="res://buildings/weapons/frost_tower.tres" id="22_w"]
+[ext_resource type="Resource" path="res://buildings/weapons/flame_tower.tres" id="23_w"]
+[ext_resource type="Resource" path="res://buildings/weapons/hook_tower.tres" id="24_w"]
+[ext_resource type="Resource" path="res://buildings/weapons/chain_cannon.tres" id="25_w"]
+[ext_resource type="Resource" path="res://buildings/weapons/whirl_tower.tres" id="26_w"]
+
 [node name="level_generator" type="Node2D" unique_id=132605351]
 script = ExtResource("1_ty8jg")
 map_size = Vector2i(100, 100)
@@ -19,4 +27,4 @@ mine_chance = 1.0
 sand_width = 2
 tree_chance_grass = 0.02
 tree_chance_flowers = 0.078
-placeable_buildings = Array[ExtResource("2_0gvok")]([ExtResource("3_egh7j"), ExtResource("4_whouse"), ExtResource("5_bhouse"), ExtResource("6_chouse"), ExtResource("7_depot"), ExtResource("8_ehouse"), ExtResource("9_wtower"), ExtResource("10_chall")])
+placeable_buildings = Array[ExtResource("2_0gvok")]([ExtResource("3_egh7j"), ExtResource("4_whouse"), ExtResource("5_bhouse"), ExtResource("6_chouse"), ExtResource("7_depot"), ExtResource("8_ehouse"), ExtResource("9_wtower"), ExtResource("10_chall"), ExtResource("20_w"), ExtResource("21_w"), ExtResource("22_w"), ExtResource("23_w"), ExtResource("24_w"), ExtResource("25_w"), ExtResource("26_w")])

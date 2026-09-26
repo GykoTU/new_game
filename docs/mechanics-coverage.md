@@ -9,6 +9,15 @@ that file changes or a stage lands.
 
 **Last reviewed:** 2026-09-21, against Stage 0 complete (clock, grids, saves, stats).
 
+**Stage 5 status (2026-09-26):** every mechanic below is implemented.
+`test_5.gd` covers *bounce + explode*, *incinerate + explode enemies*,
+*fling + walls*, and the chain-depth cap of *explode enemies* (the hard part
+of *hook + explode enemies*). Not tested as pairs: *hook + explode enemies*
+(two different weapons), *split + explode* (no weapon has both today; the
+pool ceiling it was meant to stress is tested directly) and *slow + whirl*
+(numbers only, no code). Walls arrive in Stage 6; until then the
+wall-related tests use a stand-in wall.
+
 Legend: **fits** — the architecture already supports it · **needs** — requires
 something not yet designed · **ask** — ambiguous, needs a design decision.
 
@@ -154,7 +163,9 @@ Pairs from the list that stress the design, as acceptance tests for Stage 5:
 
 1. **Slinging projectiles** are a chained cannonball: a swinging ball on a
    chain, blocked by walls like everything else. Its weapon is meant to stand
-   outside walls. *(Decided 2026-09-21.)*
+   outside walls. *(Decided 2026-09-21. Replaced 2026-09-26 after
+   play-testing: the chain cannon fires its chained balls like a cannon;
+   they catch, drag and stun instead of damaging.)*
 2. **Walls block explosions**, checked by line of sight from the blast centre.
    *(Decided 2026-09-21.)*
 

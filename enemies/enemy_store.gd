@@ -53,6 +53,14 @@ var slow_strength := PackedFloat32Array()
 var slow_ticks := PackedInt32Array()
 var burn_dps := PackedFloat32Array()
 var burn_ticks := PackedInt32Array()
+## Which weapon type lit the burn (WeaponSystem type index) and the generation
+## of the shot or effect that did, or -1 for dawn. A burn death by a weapon
+## counts as its kill: drops, and on-kill behaviours (Stage 5).
+## Ticks left stunned (Stage 5, the chain cannon): no walking, no hitting;
+## pushes still move it. Longest wins.
+var stun_ticks := PackedInt32Array()
+var burn_src := PackedInt32Array()
+var burn_gen := PackedInt32Array()
 ## Ticks left of the white hit flash.
 var flash := PackedInt32Array()
 var facing_left := PackedByteArray()
@@ -75,7 +83,7 @@ func _init() -> void:
 	slow_ticks.resize(CAP); burn_ticks.resize(CAP); flash.resize(CAP); anim_offset.resize(CAP)
 	hp.resize(CAP); max_hp.resize(CAP); slow_strength.resize(CAP); burn_dps.resize(CAP)
 	pos.resize(CAP); impulse.resize(CAP); lane.resize(CAP); waypoint.resize(CAP)
-	facing_left.resize(CAP)
+	facing_left.resize(CAP); burn_src.resize(CAP); burn_gen.resize(CAP); stun_ticks.resize(CAP)
 	_alive.resize(CAP)
 	reset_pool()
 
@@ -101,6 +109,7 @@ func alloc(p_kind: int, p_pos: Vector2, p_hp: float, p_tick: int, p_lane: Vector
 	attack_cd[id] = 0; retarget_at[id] = p_tick
 	tile[id] = -1; next_tile[id] = -1; field_version[id] = -1
 	slow_strength[id] = 0.0; slow_ticks[id] = 0; burn_dps[id] = 0.0; burn_ticks[id] = 0
+	burn_src[id] = -1; burn_gen[id] = 0; stun_ticks[id] = 0
 	flash[id] = 0; facing_left[id] = 0; anim_offset[id] = (id * 13) % 97
 	lane[id] = p_lane
 	waypoint[id] = p_pos

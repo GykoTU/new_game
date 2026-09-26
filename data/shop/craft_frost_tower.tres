@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = "craft_frost_tower"
+display_name = "Frost Tower"
+description = "Frost bolts slow what they hit."
+icon_path = "res://assets/buildings/weapons/frost_tower.png"
+kind = 2
+section = 1
+craft_group = 1
+blueprint = "blueprint:frost_tower"
+tags = PackedStringArray("weapon", "frost_tower")
+base_cost = Dictionary[int, int]({
+5: 15,
+3: 8
+})
+building_id = "frost_tower"

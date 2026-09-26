@@ -1,7 +1,11 @@
 extends GridContainer
 ## The shop's item grid, built from the catalogue. One slot per item of the
-## current section (Buy or Craft), in catalogue order: icon, name, level, price.
+## current section (Buy, Craft or Upgrades) and, in Craft and Upgrades, the
+## current sub-tab (utility / weapons, weapons / workers), in catalogue order: icon, name, level, price.
 ## Items whose blueprint the run does not know are hidden.
+##
+## It sits in a ScrollContainer (ShopUI puts it there) and sizes that to
+## `max_rows` rows: more scroll, so the shop never grows off the screen.
 ##
 ## A slot is greyed out when the item is unaffordable or maxed. A resource the
 ## player is short of is shown in red. When a sale applies, the original price
@@ -12,12 +16,18 @@ const SHORT_COLOR := Color(1.0, 0.45, 0.45)
 const STRUCK_COLOR := Color(0.55, 0.55, 0.55)
 
 @export var columns_per_row := 4
-@export var slot_size := Vector2(132, 150)
+@export var slot_size := Vector2(132, 136)
 @export var icon_size := 48
 @export var spacing := 6
+@export var max_rows := 3
+
+## Slots after a rebuild, so the window can say when a tab is empty.
+signal rebuilt(count: int)
 
 var _shop: Shop
 var section: ShopItemData.Section = ShopItemData.Section.BUY
+var group: ShopItemData.UpgradeGroup = ShopItemData.UpgradeGroup.WEAPONS
+var craft_group: ShopItemData.CraftGroup = ShopItemData.CraftGroup.UTILITY
 var _economy: Economy
 ## One entry per item: {item, button, level, price, badge}
 var _slots: Array[Dictionary] = []
@@ -50,6 +60,16 @@ func set_section(value: ShopItemData.Section) -> void:
 	_rebuild()
 
 
+func set_group(value: ShopItemData.UpgradeGroup) -> void:
+	group = value
+	_rebuild()
+
+
+func set_craft_group(value: ShopItemData.CraftGroup) -> void:
+	craft_group = value
+	_rebuild()
+
+
 func _rebuild() -> void:
 	if _shop == null:
 		return
@@ -64,6 +84,10 @@ func _build() -> void:
 	_slots.clear()
 	for item in _shop.items():
 		if item == null or item.section != section or not _shop.is_known(item):
+			continue
+		if section == ShopItemData.Section.UPGRADES and item.upgrade_group != group:
+			continue
+		if section == ShopItemData.Section.CRAFT and item.craft_group != craft_group:
 			continue
 		if item.kind == ShopItemData.Kind.ITEM and _shop.is_maxed(item):
 			continue   # a one-off item already owned: it leaves the shop
@@ -122,6 +146,22 @@ func _build() -> void:
 		add_child(button)
 		_slots.append({"item": item, "button": button, "level": level,
 			"price": price, "badge": badge, "reason": reason})
+	_fit_scroll()
+	rebuilt.emit(_slots.size())
+
+
+## The scroll area: as wide as a full row plus the scroll bar, and always
+## max_rows tall, so the window does not jump when a tab has fewer items.
+func _fit_scroll() -> void:
+	var scroll := get_parent() as ScrollContainer
+	if scroll == null:
+		return
+	var rows := max_rows
+	var bar := 14.0
+	scroll.custom_minimum_size = Vector2(
+		columns_per_row * slot_size.x + (columns_per_row - 1) * spacing + bar,
+		rows * slot_size.y + (rows - 1) * spacing)
+	scroll.scroll_vertical = 0
 
 
 func refresh() -> void:

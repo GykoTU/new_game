@@ -25,8 +25,9 @@ extends EnemyStore
 signal wall_impact(id: int, speed: float)
 ## A pushed enemy ran into an exposed worker.
 signal unit_impact(id: int, unit: int, speed: float)
-## A kill taught the run a blueprint.
-signal blueprint_dropped(blueprint: String)
+## A kill dropped a blueprint at `at`. It is reserved (Unlocks.reserve), not
+## learned: main.gd puts a cache there for the explorer to bring in.
+signal blueprint_dropped(blueprint: String, at: Vector2)
 
 
 ## Seconds between target re-evaluations, per enemy (staggered).
@@ -56,6 +57,10 @@ var tick := 0
 ## Deaths since the renderer last looked: [position, kind, tick]. Drained by
 ## CombatEffects each frame (not a signal: hundreds a night).
 var deaths: Array = []
+## Burn deaths lit by a weapon since WeaponSystem last looked:
+## [position, max_hp, weapon type, generation]. Drained every tick there, so
+## "enemies that burn to death explode" has somewhere to happen.
+var burn_kills: Array = []
 
 var _unit_hash := SpatialHash.new()
 var _rng := RandomNumberGenerator.new()
@@ -103,6 +108,7 @@ func setup(p_level: LevelGenerator, p_units: UnitSystem, p_unlocks: Unlocks,
 func clear() -> void:
 	reset_pool()
 	deaths.clear()
+	burn_kills.clear()
 	_targets_dirty = true
 
 
@@ -145,13 +151,16 @@ func spawn(k: int, at: Vector2, hp_mult := 1.0) -> int:
 
 
 ## `by_player`: a kill by the player's defences (drops count); dawn does not.
-func damage(e: int, amount: float, by_player := true) -> void:
+## Returns true if this hit killed it (weapons' on-kill behaviours need that).
+func damage(e: int, amount: float, by_player := true) -> bool:
 	if not is_alive(e) or amount <= 0.0:
-		return
+		return false
 	hp[e] -= amount
 	flash[e] = 6
 	if hp[e] <= 0.0:
 		_kill(e, by_player)
+		return true
+	return false
 
 
 ## Knockback, pulls: added to the enemy's velocity, then decays.
@@ -173,16 +182,25 @@ func apply_slow(e: int, strength: float, seconds: float) -> void:
 		slow_ticks[e] = maxi(slow_ticks[e], ticks)
 
 
-## Same rule as slow, by damage per second.
-func apply_burn(e: int, dps: float, seconds: float) -> void:
+## Same rule as slow, by damage per second. `src` is the weapon type that lit
+## it (-1: dawn); the winning burn's source is the one credited with the kill.
+func apply_burn(e: int, dps: float, seconds: float, src := -1, gen := 0) -> void:
 	if not is_alive(e):
 		return
 	var ticks := int(round(seconds / GameClock.TICK_DELTA))
 	if burn_ticks[e] <= 0 or dps > burn_dps[e]:
 		burn_dps[e] = dps
 		burn_ticks[e] = ticks
+		burn_src[e] = src
+		burn_gen[e] = gen
 	elif is_equal_approx(dps, burn_dps[e]):
 		burn_ticks[e] = maxi(burn_ticks[e], ticks)
+
+
+## Stunned for at least `seconds` (the longer of this and what is left).
+func apply_stun(e: int, seconds: float) -> void:
+	if is_alive(e):
+		stun_ticks[e] = maxi(stun_ticks[e], int(round(seconds / GameClock.TICK_DELTA)))
 
 
 ## Dawn: everything still out burns down within `seconds`.
@@ -194,11 +212,36 @@ func burn_all(seconds := 2.5) -> void:
 func _kill(e: int, by_player: bool) -> void:
 	deaths.append([pos[e], kind[e], tick])
 	if by_player and unlocks != null and _rng.randf() < kinds[kind[e]].blueprint_drop_chance:
-		var blueprint := unlocks.next_findable()
+		var blueprint := unlocks.pick_findable(_rng)
 		if blueprint != "":
-			unlocks.add(blueprint)
-			blueprint_dropped.emit(blueprint)
+			unlocks.reserve(blueprint)
+			blueprint_dropped.emit(blueprint, pos[e])
 	release(e)
+
+
+## Roughly where it is heading and how fast, for weapons that lead their shots.
+## Walking: toward its waypoint at its (slowed) speed, plus any push.
+func velocity_of(e: int) -> Vector2:
+	if not is_alive(e):
+		return Vector2.ZERO
+	var v := impulse[e]
+	if state[e] == State.MOVE and stun_ticks[e] <= 0:
+		var to := waypoint[e] - pos[e]
+		if target_unit[e] != NONE and units.store.is_alive(target_unit[e]):
+			to = units.store.pos[target_unit[e]] - pos[e]
+		if to.length_squared() > 1.0:
+			var slow := slow_strength[e] if slow_ticks[e] > 0 else 0.0
+			v += to.normalized() * _speed[kind[e]] * (1.0 - slow)
+	return v
+
+
+## Pixels between it and the building it is going for (INF without one). The
+## weapon targeting rule "first" picks the smallest.
+func distance_to_target(e: int) -> float:
+	var t := target[e]
+	if not level.store.is_alive(t):
+		return INF
+	return pos[e].distance_to(_building_center(t))
 
 
 # --- Simulation ---------------------------------------------------------------
@@ -252,7 +295,10 @@ func _step_one(e: int, dt: float, decay: float) -> void:
 		burn_ticks[e] -= 1
 		hp[e] -= burn_dps[e] * dt
 		if hp[e] <= 0.0:
-			_kill(e, false)
+			var src := burn_src[e]
+			if src >= 0:
+				burn_kills.append([pos[e], max_hp[e], src, burn_gen[e]])
+			_kill(e, src >= 0)
 			return
 	var slow := 0.0
 	if slow_ticks[e] > 0:
@@ -262,6 +308,17 @@ func _step_one(e: int, dt: float, decay: float) -> void:
 		flash[e] -= 1
 	if attack_cd[e] > 0:
 		attack_cd[e] -= 1
+	# --- stunned: no thinking, no walking, no hitting; only pushed about
+	if stun_ticks[e] > 0:
+		stun_ticks[e] -= 1
+		state[e] = State.MOVE
+		var push := impulse[e]
+		if push != Vector2.ZERO:
+			_move(e, pos[e], push * dt, _flying[k] == 1, push)
+			var rest := impulse[e]
+			impulse[e] = rest * decay if rest.length_squared() > 4.0 else Vector2.ZERO
+		next_tile[e] = -1   # re-plan once it can move again
+		return
 	# --- target (a destroyed target resets retarget_at: _on_building_removed)
 	if tick >= retarget_at[e]:
 		_retarget(e)
@@ -321,8 +378,11 @@ func _step_one(e: int, dt: float, decay: float) -> void:
 		pos[e] = p + vel * dt
 		return
 	_move(e, p, vel * dt, _flying[k] == 1, imp)
-	if imp != Vector2.ZERO:
-		impulse[e] = imp * decay if imp.length_squared() > 4.0 else Vector2.ZERO
+	# Read back: an impact in _move has already stopped the push, and decaying
+	# the local copy would restart it (one wall hit would repeat every tick).
+	var left := impulse[e]
+	if left != Vector2.ZERO:
+		impulse[e] = left * decay if left.length_squared() > 4.0 else Vector2.ZERO
 
 
 ## Moves by `delta` unless the tile it would enter is solid for it; slides along

@@ -9,11 +9,12 @@ extends RefCounted
 ## fill the bucket) list grid tile indices -- see is_tile_job(). Assignable builder tasks (planned) will be
 ## per-builder filters over these same providers, not a second system.
 
-enum Kind { BUILD, REPAIR, COBBLE, CHOP, FILL }
+enum Kind { BUILD, REPAIR, COBBLE, CHOP, FILL, DIG }
 
 ## Most urgent first. The designer's order: build > repair > cobble > chop;
-## filling the bucket (a one-off) comes before cobble, which needs it.
-const PRIORITY := [Kind.BUILD, Kind.REPAIR, Kind.FILL, Kind.COBBLE, Kind.CHOP]
+## filling the bucket (a one-off) comes before cobble, which needs it; digging
+## a building out with the shovel comes straight after repairs.
+const PRIORITY := [Kind.BUILD, Kind.REPAIR, Kind.DIG, Kind.FILL, Kind.COBBLE, Kind.CHOP]
 
 ## How many builders one job accepts at once. More builders build faster, but
 ## a whole crew on one hut leaves everything else waiting.

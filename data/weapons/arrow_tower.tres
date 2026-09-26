@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://weapons/weapon_data.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "arrow_tower"
+display_name = "Arrow Tower"
+default_target = 0
+tags = PackedStringArray("weapon", "arrow_tower")
+base_stats = Dictionary[int, float]({
+0: 8.0,
+1: 1.5,
+2: 224.0,
+3: 360.0,
+5: 1.2,
+6: 1.0,
+8: 2.0
+})
+behaviours = PackedStringArray()
+max_generation = 1
+persistent = false
+spread = 12.0
+projectile_sprite = "res://assets/projectiles/arrow.png"
+projectile_color = Color(1.0, 0.95, 0.7, 1)
+projectile_radius = 4.0
+rotate_sprite = true

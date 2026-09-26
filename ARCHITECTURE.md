@@ -492,6 +492,7 @@ Projectiles carry `friendly_fire: bool`, default **true**. They stop at walls
 (D1/D4) and damage the first unit they overlap regardless of faction. Making
 that a per-projectile flag rather than a global rule gives augments a lever —
 "your projectiles pass through workers" is a meaningful late pick.
+*(Stage 5: the flag is `WeaponData.friendly_fire`, copied onto each shot.)*
 
 ### Weapon behaviours and effect hooks
 
@@ -703,7 +704,9 @@ grant, for stress tests), **F3** stat overlay (every modifier source and every r
 stat, live), **Ctrl+T** skip to dusk or dawn, **Ctrl+F** reveal the whole
 map, **Ctrl+E** spawn 10 goblins at the map edge nearest the camera (they do
 not burn by day), **Ctrl+K** destroy the base
-(which ends the run, for testing the summary).
+(which ends the run, for testing the summary), **Ctrl+U** learn every
+blueprint (upgrades still have to be bought: Ctrl+G pays), **Ctrl+I** toggle
+invincible buildings.
 
 ### UI and input: rules that are easy to break
 
@@ -974,7 +977,7 @@ for `open_seconds` (3; `UnitStore.State.OPENING`, finishing at `think_at`).
 
 | Type | Gives | Afterwards |
 |---|---|---|
-| `poi_blueprint_cache` | the next `Unlocks.FINDABLE` blueprint (watchtower, then city hall); 2 relics once both are known | removed |
+| `poi_blueprint_cache` | a random unknown `Unlocks.FINDABLE` blueprint (watchtower, city hall, or one of six weapons since Stage 5); 2 relics once all are known | removed |
 | `poi_relic_cache` | 1–3 relics | removed |
 | `poi_npc_house` | a placeholder message | stays, visited once |
 | `poi_fruit_tree` | a placeholder message | stays, visited once |
@@ -1063,14 +1066,15 @@ Files: `enemies/` (`enemy_data.gd`, `enemy_store.gd`, `enemy_system.gd`,
   `building`, `base`, `weapon` (12 damage, 1.25/s, 176 px), so modifiers
   reach it. It fires the moment something comes in range. The bolt is drawn
   with the night tint divided out, like the building glow: it is light.
-- **Blueprint drops**: a kill by the player (not by dawn) teaches the next
-  `Unlocks.FINDABLE` blueprint with the kind's `blueprint_drop_chance`
-  (goblin 3%, bee 2%). Stage 5 adds weapon blueprints to that list.
+- **Blueprint drops**: a kill by the player (not by dawn) teaches a random
+  `Unlocks.FINDABLE` blueprint the run does not know yet, with the kind's
+  `blueprint_drop_chance` (goblin 3%, bee 2%). Since Stage 5 the list also
+  holds the six findable weapons, so every run's arsenal differs.
 - **Spatial hash** (`SpatialHash`): counting sort into 2-tile cells, rebuilt
   every tick (0.29 ms for 500). Used for the zap, worker aggro and impacts;
   Stage 5 projectiles will query it.
 - **Order** in `_simulate`: director, waves, units, fog, enemies, defence,
-  forest. The zap runs after the enemies, on the hash they just built.
+  weapons (Stage 5), forest. The zap runs after the enemies, on the hash they just built.
 - **Rendering.** One MultiMesh per (kind, animation), y-sorted; the shader
   shows the hit flash and the burn tint. Missing walk/attack sheets are
   skipped (never a placeholder). `CombatEffects` draws bolts, deaths and the
@@ -1081,6 +1085,172 @@ Files: `enemies/` (`enemy_data.gd`, `enemy_store.gd`, `enemy_system.gd`,
   rather than stalling it.
 - **Saved**: enemies (kind by id, position, health, burn, slow) and tonight's
   queue. Targets and routes are recomputed after loading.
+
+### Weapons, shots and effects (implemented, Stage 5)
+
+**Diagram: [`docs/weapons.svg`](docs/weapons.svg)** — one tick of the weapon
+system, where each behaviour hooks into a shot's life, the seven weapons, and
+the budgets.
+
+Files: `weapons/` (`weapon_data.gd`, `weapon_system.gd`, `projectile_store.gd`,
+`projectile_system.gd`, `behaviour.gd`, `behaviour_set.gd`, `behaviours.gd`,
+`effect_system.gd`, `projectile_renderer.gd`, `weapon_effects.gd`),
+`UI/weapon_panel.gd`, `data/weapons/*.tres`, `buildings/weapons/*.tres`,
+`data/shop/craft_<weapon>.tres` and `upg_*.tres`.
+
+- **Weapons are buildings with a `WeaponData`** (`BuildingData.weapon`):
+  base stats, base behaviours, default target mode, persistent or not,
+  `max_generation`, `friendly_fire`, spread, and the shot's sprite, stand-in
+  colour and hit radius. Seven: arrow tower (known at the start), cannon,
+  frost, flame, hook, chain cannon, whirl (all findable). Threat 3.
+- **One StatBlock and one BehaviourSet per weapon TYPE** (D7), tagged
+  `weapon` + the weapon's id, so "+1 pierce for arrow towers" and "+10%
+  damage to every weapon" are plain modifiers. Stat upgrades are ordinary
+  shop UPGRADEs. **Behaviour upgrades** are shop ITEMs whose `item_id` is
+  `behaviour.<weapon>.<behaviour>`: buying one adds the unlock
+  `item:behaviour.<weapon>.<behaviour>`, and `WeaponSystem._compile` rebuilds
+  that type's set (on `Unlocks.changed`). They sit behind the weapon's
+  blueprint like its craft item.
+- **Behaviours** (`behaviours.gd`, D6) are stateless singletons with hooks
+  `on_spawn / on_step / on_wall_hit / on_unit_hit / on_expire / on_kill`. A
+  set sorts them by priority into one list per hook, so a shot only pays for
+  the hooks its set has; only homing, hook, orbit and the chain ball step every tick.
+  Per-shot state lives in the store's scratch slots (`hooked`, `seek`,
+  `slot`, `last_hit`...). Numbers always come from the type's stats.
+
+  | behaviour | hook | does |
+  |---|---|---|
+  | knockback, slow, burn | hit | what being hit does (a chain passes these on) |
+  | explode | hit, wall, expire | blast of `AREA_RADIUS`; the set then skips direct damage |
+  | bounce | wall, final hit | reflect (both axes at a corner); off an enemy: on to the nearest other one |
+  | split | first hit | replaced by `SPLIT_COUNT` children, 60° fan, 60% damage, same pierce left, gen + 1 |
+  | chain | hit | arcs to `CHAIN_COUNT` more enemies within 112 px, instantly |
+  | homing | step | turns toward the nearest enemy within 160 px, 6 rad/s |
+  | hook | hit, step, wall, expire | grabs, drags at `PULL_STRENGTH` through the impulse channel, lets go at 30 px, 1.5 s or a wall, reels in |
+  | orbit | step | `PROJECTILE_COUNT` blades at `ORBIT_RADIUS` |
+  | chain_ball | hit, step | catches up to `PIERCE_COUNT` enemies, stuns and drags them; drops them stunned for `STUN_DURATION` when it ends |
+  | long_chain | step | the catch radius grows 40 px/s, up to +40 px |
+  | burning_ground | expire | 1 in 4: a patch of `AREA_RADIUS` for `BURN_DURATION` |
+  | explode_enemies | kill | the dead enemy explodes 8 ticks later: `DAMAGE` + 30% of its health, radius ≥ 40, gen + 1 |
+
+- **Pierce** is not a behaviour: every shot starts with `pierce_left` from
+  `PIERCE_COUNT` and loses one per hit. The hit with none left is `final`;
+  the shot ends there unless a behaviour keeps it (bounce, hook).
+- **Shots** (`ProjectileStore`, CAP 800, `ProjectileSystem` extends it, D10).
+  States: FLY, HOOKED, RETURN, HELD. Movement walks the path in steps of at
+  most 16 px and checks the tile entered against `BLOCKS_PROJECTILE` (and
+  the map edge), so a fast shot cannot skip a tile (D4). Hits: enemies from
+  `EnemySystem.nearby` (radius + 10 px), then exposed workers. A shot never
+  hits the same enemy twice in a row (last two remembered); held shots may
+  hit it again after 24 ticks.
+- **Friendly fire**: per weapon (`WeaponData.friendly_fire`, default true),
+  copied onto each shot. A worker hit takes full damage and costs a pierce,
+  or stops the shot as if its life ran out (a shell still explodes). Blasts
+  and burning ground hurt exposed workers too. Workers inside are never hit.
+- **Effects** (`EffectSystem`, CAP 256): blasts and burning ground, first-
+  class beside the shots (mechanics review). A blast with no delay goes off
+  at once; delayed ones (enemy explosions) wait in the pool, and at most 48
+  go off per tick. Walls shield: line of sight from the centre, sampled
+  every 12 px. Burning ground pulses every 10 ticks: a short burn on enemies
+  standing in it, damage to workers.
+- **Kills.** All weapon damage goes through `WeaponSystem.hit_enemy`, which
+  calls the type's `on_kill`. A burn records which weapon type lit it
+  (`EnemyStore.burn_src`, `burn_gen`); a burn death by a weapon is that
+  weapon's kill (drops, `on_kill`) through `EnemySystem.burn_kills`. Dawn's
+  burn has no source and is nobody's kill.
+- **Generations.** Split children and chained blasts count up from 0 and stop
+  at `max_generation` (2). With the pool ceilings and the per-tick blast cap,
+  no combination can stall a tick or grow an array.
+- **Targeting.** A weapon picks from `nearby` within `RANGE` by its
+  building's mode: nearest; strongest (most health); first (closest to the
+  building it is attacking, `EnemySystem.distance_to_target`). It leads the
+  target once (`EnemySystem.velocity_of`). Shells land where they were aimed.
+  Modes are saved by cell; everything else is rebuilt.
+- **Held weapons** (the whirl tower): while an enemy is within `RANGE`, the shots
+  are out; a lost one comes back every `1 / FIRE_RATE` s; after 2 s with none
+  near, they are pulled in. A destroyed weapon takes its held shots with it.
+- **Impacts.** A pushed enemy hitting a wall takes (speed − 60) × 0.1 damage
+  and any hook on it lets go; one hitting a worker hurts the worker the same.
+- **Walls.** Until Stage 6 builds walls nothing on the map sets
+  `BLOCKS_PROJECTILE`, so today the only wall is the map edge. Bounce, blast
+  shielding and wall impacts are tested with a stand-in wall.
+- **Rendering.** `ProjectileRenderer`: one MultiMesh per weapon type, turned
+  to face the flight; missing sprites are soft dots in the weapon's colour.
+  `WeaponEffects`: hook ropes, the chain cannon's balls, stunned enemies, frost
+  arcs, blasts, burning ground, the optional frost hit, and the selected
+  weapon's range circle. Fire, frost and shots are drawn unlit (like the zap).
+- **The weapon panel.** Clicking a finished weapon shows its name, damage,
+  range and rate, and a button cycling nearest → strongest → first (not for
+  held weapons). Right click, Esc or a click elsewhere closes it.
+- **Order**: `WeaponSystem.step` runs after `BaseDefence.step`: burn kills,
+  weapons fire, shots move and hit, effects.
+- **Measured**: 500 enemies against 16 weapons of every kind: weapons 0.5 ms
+  per tick, everything together 2.1 ms (test_5).
+- **Saved**: `weapons` (target modes by cell). Shots and effects in flight are
+  not saved; after loading, the weapons simply fire again.
+- **Refactors this stage**: `Unlocks.next_findable()` became
+  `pick_findable(rng)` (random, from `findable`, which tests can narrow);
+  `EnemySystem.damage` returns whether it killed; `apply_burn` takes a source
+  and generation; an enemy that hit a wall kept being "hit" every tick
+  because the impulse was decayed from a stale copy — fixed, one impact per
+  collision.
+
+**Play-test fixes (after Stage 5).**
+
+- **Blueprints for everything, with rarity.** Every upgrade now has its own
+  blueprint, `blueprint:<item id>`, and is hidden until it is found; a
+  weapon's upgrades also `require` the weapon (`ShopItemData.requires`), and
+  their blueprints only drop once it is known. `ShopItemData.rarity` is
+  COMMON or RARE: the one-off behaviour upgrades are rare, everything else
+  common. `Unlocks.configure(catalogue)` builds the findable pool from the
+  shop (every blueprint a run does not start with); `pick_findable` picks a
+  rarity first (rare 1 in 5 while one is left), then uniformly. One blueprint
+  unlocks every level of an upgrade.
+- **Dropped blueprints.** A kill that drops a blueprint no longer teaches it:
+  `EnemySystem.blueprint_dropped(blueprint, at)` RESERVES it
+  (`Unlocks.reserve`, saved) and `PointsOfInterest.add_dropped` puts a
+  `poi_blueprint_dropped` on the nearest free walkable tile within 3. The
+  explorer fetches it like any point of interest (by day), which learns it.
+  It stays until fetched; a reserved blueprint is never picked again. Its
+  halo (`CacheHalos`, additive, unlit) is grey for common, blue for rare.
+  Saved: what each cache holds, by cell (`poi.dropped`).
+- **Shop tabs.** `ShopItemData.Section` gains UPGRADES (appended) and
+  `upgrade_group` (WEAPONS / WORKERS). Buy = workers (gold), Craft =
+  buildings and items (resources) in two sub-tabs, Utility and Weapons
+  (`ShopItemData.craft_group`), Upgrades = two sub-tabs (`upgrade_group`).
+  The grid is always three rows tall, so the window does not jump between
+  tabs. The grid sits in
+  a ScrollContainer at most three rows tall (`ShopItems.max_rows`); the shop
+  window is on canvas layer 4, under the resource bar.
+- **The shovel** (`Demolition`, `DigMarks`): an item like the bucket. Paint
+  over buildings to mark or unmark them; a builder digs a marked one out (a
+  DIG job, after repairs; half its build work, at least 2 builder-seconds)
+  and half its craft price comes back. Not the base, trees, mines or points
+  of interest. Marked buildings are not built on or repaired. Saved:
+  `demolition`.
+- **Split** now happens at the arrow's FIRST hit: the arrow is replaced by its
+  children, which carry the pierce it had left. The arrow's
+  `max_generation` is 1, so children do not split again.
+- **Chain cannon** (was the sling; ids renamed, so older runs with slings or
+  sling upgrades start a new run). Aimed like the cannon, but it always
+  flies its full `RANGE` (its life is set from distance / speed on spawn),
+  sweeping through and past its target; it no longer lands on the aim point,
+  which made it stop short. The `chain_ball` behaviour does no damage and
+  never stops at an enemy: it catches up to `PIERCE_COUNT` (6) enemies, stuns
+  them and drags them bunched round the balls through the impulse channel;
+  where its flight ends (or at a wall) it drops them, stunned for
+  `STUN_DURATION` (2 s, a new appended stat). `long_chain` (rare) grows the catch radius 40 px/s, up to
+  +40 px; `WeaponData.draw_split` makes `WeaponEffects` draw the sprite's two
+  halves apart with its middle column stretched between, and
+  `spin_speed` turns it as it flies. **Stun** is a new enemy status
+  (`EnemyStore.stun_ticks`, longest wins): no walking or hitting, pushes still
+  move it.
+- **Targeting "first"** now also picks enemies without a target yet (after
+  every enemy that has one). Before, such an enemy was never picked.
+- **Dev shortcuts.** **Ctrl+U** learns every blueprint only (it used to buy
+  every behaviour upgrade, which is why cannons seemed to bounce by default).
+  **Ctrl+I** toggles invincible buildings (`BuildingStore.invincible`, not
+  saved).
 
 ### Progression
 Global XP from kills, exploration, and a slow survival drip that prevents
@@ -1148,7 +1318,8 @@ one key in `main.gd.save_run()`, never touching the autoload.
 ### What a run save holds, and load order
 
     level, clock, economy, roster, shop, modifiers, units,
-    unlocks, inventory, forest, lava, director, poi, enemies, waves
+    unlocks, inventory, forest, lava, director, poi, enemies, waves, weapons,
+    demolition
 
 Load order is load-bearing: **shop purchases before modifiers**, because
 rebuilding an upgrade's modifiers reads its level from the purchase count; and
@@ -1244,6 +1415,9 @@ Working targets, to be measured rather than assumed:
   so no augment combination can grow the arrays without bound.
 - Allocation in the hot loop is avoided: arrays are preallocated and entities
   are recycled through free lists rather than created and freed.
+- Measured (Stage 5, test_5): 500 enemies and 16 weapons of all seven kinds
+  firing: 2.1 ms per tick in total, of which weapons, shots and effects 0.5 ms.
+  Pools: enemies 600, shots 800, effects 256, at most 48 blasts a tick.
 
 ---
 

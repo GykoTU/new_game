@@ -41,6 +41,8 @@ const ACTIONS := [
 	["debug_reveal_map",      "Reveal the whole map", Category.DEBUG, true, true],
 	["debug_spawn_enemies",   "Spawn 10 goblins at the nearest edge", Category.DEBUG, true, true],
 	["debug_kill_base",       "Destroy the base (ends the run)", Category.DEBUG, true, true],
+	["debug_unlock_all",      "Learn every blueprint", Category.DEBUG, true, true],
+	["debug_invincible",      "Buildings take no damage (toggle)", Category.DEBUG, true, true],
 ]
 
 const _MOUSE_NAMES := {

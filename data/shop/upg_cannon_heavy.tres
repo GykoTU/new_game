@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
+[ext_resource type="Script" path="res://stats/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_0"]
+script = ExtResource("2_mod")
+stat = 9
+op = 1
+value = 0.2
+tags = PackedStringArray("cannon")
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("2_mod")
+stat = 11
+op = 1
+value = 0.2
+tags = PackedStringArray("cannon")
+
+[resource]
+script = ExtResource("1_item")
+id = "cannon_heavy"
+display_name = "Heavier Shells"
+description = "+20% blast radius and knockback per level."
+icon_path = "res://assets/buildings/weapons/cannon.png"
+kind = 1
+section = 2
+blueprint = "blueprint:cannon_heavy"
+rarity = 0
+upgrade_group = 0
+requires = "blueprint:cannon"
+tags = PackedStringArray("weapon", "cannon")
+base_cost = Dictionary[int, int]({
+5: 15,
+2: 5
+})
+cost_growth = 1.6
+max_level = 3
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0"), SubResource("Mod_1")])

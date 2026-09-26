@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="ShopItemData" format=3]
+
+[ext_resource type="Script" path="res://economy/shop_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = "cannon_bounce"
+display_name = "Bouncing Shells"
+description = "Shells bounce on after they land, twice: off walls, or on to the next enemy near. They explode each time."
+icon_path = "res://assets/buildings/weapons/cannon.png"
+kind = 3
+section = 2
+blueprint = "blueprint:cannon_bounce"
+rarity = 1
+upgrade_group = 0
+requires = "blueprint:cannon"
+tags = PackedStringArray("weapon", "cannon")
+base_cost = Dictionary[int, int]({
+5: 20,
+2: 10
+})
+max_level = 1
+item_id = "behaviour.cannon.bounce"

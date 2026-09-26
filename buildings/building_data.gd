@@ -27,6 +27,8 @@ extends Resource
 ## can draw them away from the base. 0 = never chosen as a target (still broken
 ## through when it blocks the way).
 @export var threat_priority := 2.0
+## Set for weapon buildings (Stage 5): what it fires. Null for everything else.
+@export var weapon: WeaponData
 ## Tiles of fog cleared around it, once, when it is finished. 0 = none.
 ## The watchtower's whole job; any building can have one.
 @export var reveal_radius := 0

@@ -39,6 +39,8 @@ var forest: Forest
 var lava: LavaWorks
 ## Points of interest (Stage 3b). Optional: without it, explorers only explore.
 var pois: PointsOfInterest
+## The shovel's marks (Stage 5 fixes). Optional: without it, nothing is dug.
+var demolition: Demolition
 var economy: Economy
 var modifiers: ModifierSet
 ## "miner" / "builder" / "carrier" -> StatBlock, one per type (D7).
@@ -87,6 +89,7 @@ func setup(p_level: LevelGenerator, p_economy: Economy, p_modifiers: ModifierSet
 	board.set_provider(JobBoard.Kind.CHOP, _marked_trees)
 	board.set_provider(JobBoard.Kind.COBBLE, _cobble_tiles)
 	board.set_provider(JobBoard.Kind.FILL, _fill_tiles)
+	board.set_provider(JobBoard.Kind.DIG, _dig_jobs)
 	board.set_position_lookup(_tile_pos, JobBoard.Kind.COBBLE)
 	board.set_position_lookup(_tile_pos, JobBoard.Kind.FILL)
 	board.set_position_lookup(_building_pos)
@@ -654,6 +657,12 @@ func _work(id: int, dt: float) -> void:
 	if not level.store.is_alive(b):
 		_stop_working(id)
 		return
+	if store.job[id] == JobBoard.Kind.DIG:
+		# The shovel: dig it out (refunded by Demolition), or stop if unmarked.
+		if demolition == null or not demolition.is_marked(b) \
+				or demolition.dig(b, _stat(WorkerRoster.Kind.BUILDER, Stats.Id.BUILD_SPEED) * dt):
+			_stop_working(id)
+		return
 	if forest != null and forest.is_tree(b):
 		if not forest.is_marked(b):
 			_stop_working(id)   # unmarked while being chopped
@@ -735,9 +744,18 @@ func _tile_pos(i: int) -> Vector2:
 func _construction_sites() -> PackedInt32Array:
 	var out := PackedInt32Array()
 	for b in level.store.alive_ids():
-		if not level.store.is_complete(b):
+		if not level.store.is_complete(b) and not _to_dig(b):
 			out.append(b)
 	return out
+
+
+## Marked for the shovel: not built on, not repaired.
+func _to_dig(b: int) -> bool:
+	return demolition != null and demolition.is_marked(b)
+
+
+func _dig_jobs() -> PackedInt32Array:
+	return demolition.marked() if demolition != null else PackedInt32Array()
 
 
 func _marked_trees() -> PackedInt32Array:
@@ -747,7 +765,8 @@ func _marked_trees() -> PackedInt32Array:
 func _damaged_buildings() -> PackedInt32Array:
 	var out := PackedInt32Array()
 	for b in level.store.alive_ids():
-		if level.store.is_complete(b) and level.store.get_health(b) < level.store.get_max_health(b):
+		if level.store.is_complete(b) and level.store.get_health(b) < level.store.get_max_health(b) \
+				and not _to_dig(b):
 			out.append(b)
 	return out
 

@@ -18,6 +18,8 @@ const NONE := -1
 ## Default until BuildingData carries real values (Stage 1).
 const DEFAULT_MAX_HEALTH := 100.0
 
+## Dev shortcut (Ctrl+I): buildings take no damage. Never saved.
+var invincible := false
 var _type := PackedStringArray()
 var _cell_x := PackedInt32Array()
 var _cell_y := PackedInt32Array()
@@ -133,6 +135,8 @@ func get_max_health(id: int) -> float:
 func damage(id: int, amount: float) -> float:
 	if not is_alive(id):
 		return 0.0
+	if invincible:
+		return _health[id]   # dev shortcut for play-testing (Ctrl+I)
 	_health[id] = maxf(_health[id] - amount, 0.0)
 	return _health[id]
 

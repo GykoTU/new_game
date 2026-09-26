@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://weapons/weapon_data.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "frost_tower"
+display_name = "Frost Tower"
+default_target = 0
+tags = PackedStringArray("weapon", "frost_tower")
+base_stats = Dictionary[int, float]({
+0: 3.0,
+1: 1.0,
+2: 192.0,
+3: 260.0,
+5: 1.2,
+13: 0.4,
+14: 2.5,
+25: 2.0
+})
+behaviours = PackedStringArray("slow")
+persistent = false
+spread = 12.0
+projectile_sprite = "res://assets/projectiles/frost_bolt.png"
+projectile_color = Color(0.6, 0.9, 1.0, 1)
+projectile_radius = 5.0
+rotate_sprite = true
