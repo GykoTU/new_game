@@ -20,9 +20,7 @@ blueprint = "blueprint:chain_cannon_stun"
 requires = "blueprint:chain_cannon"
 upgrade_group = 0
 tags = PackedStringArray("weapon", "chain_cannon")
-base_cost = Dictionary[int, int]({
-3: 6
-})
+base_cost = Dictionary[int, int]({2: 6})
 cost_growth = 1.6
 max_level = 3
 modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])

@@ -329,6 +329,7 @@ func _ready() -> void:
 
 	EventBus.on_quit_button_pressed.connect(save_run)
 	economy.changed.connect(func(kind, amount): EventBus.resource_changed.emit(kind, amount))
+	economy.changed.connect(_on_resource_changed)
 	roster.changed.connect(func(kind, count): EventBus.roster_changed.emit(kind, count))
 	shop.purchased.connect(func(item, n): EventBus.shop_purchased.emit(item.id, n))
 	level.level_generated.connect(_on_level_generated)
@@ -503,6 +504,7 @@ func _load_run(save: Dictionary) -> bool:
 	if save.has("shop") and not shop.load_save_data(save["shop"]):
 		return false
 	unlocks.load_save_data(save.get("unlocks", {}))
+	_update_reached_tier()   # a save from before Stage 9 has no tier yet
 	inventory.load_save_data(save.get("inventory", {}))
 	# Before modifiers: augment sources are rebuilt from the stacks.
 	progression.load_save_data(save.get("progression", {}))
@@ -689,6 +691,18 @@ func _summary_rows() -> Array:
 	rows.append(["Relics for surviving", str(_survival_relics)])
 	rows.append(["Best day so far", str(int(SaveManager.profile.get("best_day", 0)))])
 	return rows
+
+
+## Stage 9: holding a resource of a new tier lets enemy drops offer it.
+func _on_resource_changed(kind: int, amount: int) -> void:
+	if amount > 0:
+		unlocks.reach_tier(ResourceKind.tier_of(kind))
+
+
+func _update_reached_tier() -> void:
+	for kind in ResourceKind.count():
+		if economy.amount(kind) > 0:
+			unlocks.reach_tier(ResourceKind.tier_of(kind))
 
 
 ## Stage 8: what a fallen run pays into the relic tree on top of the relics

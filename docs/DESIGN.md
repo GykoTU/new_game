@@ -11,12 +11,113 @@ Status markers: **decided** · **proposed** (awaiting the designer) · **open**.
 
 ## Resources
 
-Gold, quartz, copper, diamond, fruit — and **wood** (decided, not yet built).
+Wood, gold, iron, copper, quartz, diamond (and fruit, unused). Since Stage 9
+they form a ladder; see **Cohesion pass** above. Gold and iron are mined in
+the start valley, copper in lava, quartz in water, diamonds on ice.
 
-Terrain gates what can be reached. Water, void and lava block movement, and the
-generator places copper in water, quartz in void and gold in lava. At the start
-of a run only **diamond mines (on ice), fruit trees and plain trees** are
-reachable.
+## Cohesion pass (decided; Stage 9 built)
+
+Stages 0-8 laid the mechanical foundation. The cohesion pass turns it into one
+game: the map leads the player up a resource ladder, nights push them to
+expand, and each power track has its own job. Everything here supersedes the
+older sections where they disagree; those are updated as each part is built.
+
+### The resource ladder
+
+| Tier | Resource | Where | Gate | Its job |
+|---|---|---|---|---|
+| 0 | Wood | trees, everywhere | none | bulk building: houses, walls, roads |
+| 1 | Gold | start valley | none | people: workers, the shop |
+| 1 | Iron | start valley | none | the first small tool step (the pickaxe upgrade) |
+| 2 | Copper | lava fields | bucket, then cobble (the tutorial gate) | machines: cannon, hook, chain cannon, gates |
+| 3 | Quartz | across water | bridge (costs copper) | energy: flame and frost towers, the watchtower, the base's zap |
+| 4 | Diamond | the snowfield | (see Terrain) | masterwork: top-tier upgrades and buildings, the city hall |
+| — | the finale | the void | crossing (costs quartz) | the run's goal (see Run arc) |
+
+- Each traversal tool is paid with the resource the step before unlocked.
+- Weapons belong to families: **machines** cost copper, **elements** quartz.
+- The pickaxe (bought with iron) is the only small per-worker mining step.
+  Bigger mining progress comes from **building expansions** (below), not
+  from stronger tools.
+- Fruit stays out for now; its use is open (hidden from the resource bar).
+- **Built in Stage 9** (on today's map, before Stage 10's mountains): biomes
+  lie in distance rings from the start (lava near, water further, ice
+  furthest), so diamonds are far rather than gated until the snowfield
+  exists. Gates cost iron, the pickaxe is known from the start, and XP comes
+  at about one pick every two days.
+
+### Terrain: a tighter world
+
+- **Larger, more hazardous biomes.** **Mountains** are impassable and split
+  the map into a **chain of regions**: start valley -> lava pass -> lake ->
+  snowfield -> void. The way on always crosses the next biome, so the map
+  itself leads the player up the ladder. Side pockets hold caches.
+- The fog of war stays central: the world should feel explored, not roamed.
+- **The ice biome becomes a snowfield**: a permanent snowstorm with a
+  **thicker fog** (units see much less) and **slower movement**. Inside it,
+  weapons can only fire at enemies **close to the weapon** or inside a
+  **watchtower's vision cone**. A watchtower in the snow casts a **long cone**
+  the player **aims** when placing it (and can re-aim from its panel). That
+  is the watchtower's real purpose.
+
+### Blueprints follow the map
+
+- A cache carries the tech of its region: a cache in the lava fields holds
+  copper-tier blueprints, one across the water quartz-tier, and so on. A find
+  always points at a resource the player is about to reach.
+- The first cache opened in a region always holds **the next gate's
+  blueprint**: lava caches the bridge, water caches the crossing. Enemy
+  drops never offer tech beyond the highest resource the run has held.
+- Rarity grows with distance from the base.
+
+### Threat: always there, and a reason to expand
+
+- **Every night** brings a small wave on a **gentler curve** than today, so
+  there is time to explore.
+- **Sieges are announced** days ahead ("A siege comes on day 6"), much
+  stronger, from a stated direction. They are what forces expansion: the
+  player needs the next tier to hold.
+- **Expansion raises the threat a little** (claimed mines and regions add to
+  siege strength), and entering a biome wakes **its own enemies**.
+- Outlying mines are what gets attacked, so walls, gates, roads and depots
+  matter all run.
+
+### Building expansions (mid and late game)
+
+- Mid- and late-game progress centres on **buildings, not individuals**. A
+  miner house **expands around its mine** in tiers: each larger upgrade makes
+  the building visibly bigger (the designer's sprites) and stronger. The same
+  pattern will apply to every building. Workers are still bought for them.
+- The pickaxe (iron) remains the one small early increment.
+
+### Points of interest and the city hall
+
+- **NPC house -> trader**: swaps resources at poor rates (a safety valve for
+  bad maps) and sells one blueprint per visit for gold.
+- **Special fruit tree**: eating its fruit gives an instant level-up or a
+  free rare augment.
+- **City hall**: task priorities as designed, made the diamond-tier building.
+
+### Three power tracks, three jobs
+
+- **Shop (resources): the plan.** Deliberate weapon and worker upgrades; the
+  only track that tunes one specific weapon's numbers.
+- **Augments (XP): the build.** Mostly rule changes and cross-system
+  synergies, fewer flat stats; tags follow the families (machine, element,
+  worker, wall). **XP comes too fast today and must slow down.**
+- **Relic tree (meta): variety, not raw power.** Unlocks, starting options,
+  perks; small stat nodes at most.
+
+### Run arc
+
+- A goal at the top of the ladder: a **heart (or beacon) deep in the void**.
+  Reaching it needs the whole traversal chain; activating it starts a
+  **final siege**; surviving it wins the run, with a large relic payout.
+  Endless play may remain after a win.
+- The acts: **Settle** (wood, gold, iron) -> **Forge** (cobble, copper) ->
+  **Cross** (bridges, quartz) -> **Brave the snow** (diamonds) -> **Descend**
+  (the void, the finale).
+- Diamonds left when a run ends convert into relics.
 
 ## The progression chain (decided)
 

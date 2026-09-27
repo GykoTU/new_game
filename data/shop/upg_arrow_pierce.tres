@@ -21,9 +21,7 @@ blueprint = "blueprint:arrow_pierce"
 requires = "blueprint:arrow_tower"
 upgrade_group = 0
 tags = PackedStringArray("weapon", "arrow_tower")
-base_cost = Dictionary[int, int]({
-5: 15
-})
+base_cost = Dictionary[int, int]({6: 8, 5: 5})
 cost_growth = 1.6
 max_level = 3
 modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])

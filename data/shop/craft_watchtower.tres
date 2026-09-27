@@ -12,7 +12,5 @@ kind = 2
 section = 1
 blueprint = "blueprint:watchtower"
 tags = PackedStringArray("watchtower")
-base_cost = Dictionary[int, int]({
-5: 20
-})
+base_cost = Dictionary[int, int]({5: 20, 1: 5})
 building_id = "watchtower"

@@ -13,6 +13,12 @@ extends RefCounted
 ## A blueprint lying on the map in a dropped cache is RESERVED: it cannot be
 ## picked again until the explorer brings it in (or the cache is lost).
 ##
+## TIERS (Stage 9): every findable blueprint has the tier of what it costs
+## (ResourceKind.tier_of_cost). A region cache offers its region's tier, and
+## lower ones once that tier is exhausted; enemy drops offer up to the highest
+## tier the run has REACHED (held any of that tier's resources). The next
+## gate's blueprint (GATE_KEYS) always comes first in its tier's caches.
+##
 ## A LOCKED blueprint (Stage 8) is kept out of the pool until its relic-tree
 ## node is bought. main.gd sets the locks from the run's tree snapshot; they
 ## are not saved here.
@@ -33,14 +39,20 @@ const STARTING := [
 	"blueprint:arrow_tower",      # Stage 5: the one weapon every run has
 	"blueprint:wall",             # Stage 6: walls and gates, painted
 	"blueprint:road",
+	"blueprint:pickaxe",          # Stage 9: iron's first use, from the start
 ]
 
 ## Findable blueprints that are not shop items (Stage 6 paint tools), with
-## their names. Common.
+## their names. Common. Their tier comes from BuildTools' prices.
 const EXTRA_FINDABLE := {
 	"blueprint:bridge": "Bridge",
 	"blueprint:crossing": "Void Crossing",
 }
+const EXTRA_PRICE_KEYS := {"blueprint:bridge": "bridge", "blueprint:crossing": "crossing"}
+
+## The key to the next region, found in the caches of the region before it:
+## lava caches (tier 2) hold the bridge, water caches (tier 3) the crossing.
+const GATE_KEYS := {2: "blueprint:bridge", 3: "blueprint:crossing"}
 
 ## The findable buildings, for a pool without a catalogue (tools, tests).
 ## main.gd replaces the pool with configure().
@@ -67,6 +79,9 @@ var _reserved := {}
 var _rarity := {}     # blueprint -> Rarity (missing: common)
 var _requires := {}   # blueprint -> blueprint that must be known first
 var _names := {}      # blueprint -> what the player calls it
+var _tiers := {}      # blueprint -> resource-ladder tier (missing: 1)
+## The highest resource tier this run has held (Stage 9). Saved.
+var reached_tier := 1
 var _locked := {}     # blueprint -> true: not findable this run (relic tree)
 
 
@@ -77,6 +92,7 @@ func configure(catalogue: ShopCatalogue) -> void:
 	_rarity.clear()
 	_requires.clear()
 	_names.clear()
+	_tiers.clear()
 	for item in catalogue.items:
 		if item == null or item.blueprint == "":
 			continue
@@ -87,18 +103,21 @@ func configure(catalogue: ShopCatalogue) -> void:
 			continue
 		findable.append(id)
 		_rarity[id] = item.rarity
+		_tiers[id] = ResourceKind.tier_of_cost(item.base_cost)
 		if item.requires != "":
 			_requires[id] = item.requires
 	for id in EXTRA_FINDABLE:
 		if not findable.has(id):
 			findable.append(id)
 			_names[id] = EXTRA_FINDABLE[id]
+			_tiers[id] = ResourceKind.tier_of_cost(BuildTools.price_of(EXTRA_PRICE_KEYS[id]))
 
 
 ## A new run: back to the starting set.
 func reset() -> void:
 	_ids.clear()
 	_reserved.clear()
+	reached_tier = 1
 	for id in STARTING:
 		_ids[id] = true
 	changed.emit()
@@ -116,6 +135,15 @@ func add(id: String) -> bool:
 	_ids[id] = true
 	changed.emit()
 	return true
+
+
+func tier_of(id: String) -> int:
+	return int(_tiers.get(id, 1))
+
+
+## The run held a resource of `tier`: drops may now offer that tier.
+func reach_tier(tier: int) -> void:
+	reached_tier = maxi(reached_tier, tier)
 
 
 func rarity_of(id: String) -> int:
@@ -158,19 +186,41 @@ func is_locked(id: String) -> bool:
 
 ## A random findable blueprint (rarity first, then uniformly), or "" if none
 ## is left. Does not learn it: the caller does (add, or reserve for a drop).
-func pick_findable(rng: RandomNumberGenerator) -> String:
+##
+## `tier` > 0 (a region cache): that tier's gate key if it is still to find,
+## else a blueprint of that tier, else of the highest lower tier with any
+## left. `max_tier` > 0 (an enemy drop): any tier up to it. `rare` >= 0
+## overrides rare_chance (caches further out are rarer).
+func pick_findable(rng: RandomNumberGenerator, tier := 0, max_tier := 0, rare := -1.0) -> String:
+	if tier > 0:
+		var key: String = GATE_KEYS.get(tier, "")
+		if key != "" and findable.has(key) and is_findable(key):
+			rng.randf()   # keep the stream the same length either way
+			return key
+		for t in range(tier, 0, -1):
+			var got := _pick(rng, t, t, rare)
+			if got != "":
+				return got
+		return ""
+	return _pick(rng, 1 if max_tier > 0 else 0, max_tier, rare)
+
+
+func _pick(rng: RandomNumberGenerator, lo: int, hi: int, rare: float) -> String:
+	var chance := rare_chance if rare < 0.0 else rare
 	var common: Array = []
-	var rare: Array = []
+	var rare_ids: Array = []
 	for id in findable:
+		if hi > 0 and (tier_of(id) < lo or tier_of(id) > hi):
+			continue
 		if is_findable(id):
 			if rarity_of(id) == Rarity.RARE:
-				rare.append(id)
+				rare_ids.append(id)
 			else:
 				common.append(id)
-	if common.is_empty() and rare.is_empty():
+	if common.is_empty() and rare_ids.is_empty():
 		return ""
 	var roll := rng.randf()   # always drawn, so the stream does not depend on the pool
-	var pool := rare if not rare.is_empty() and (common.is_empty() or roll < rare_chance) else common
+	var pool := rare_ids if not rare_ids.is_empty() and (common.is_empty() or roll < chance) else common
 	return pool[rng.randi_range(0, pool.size() - 1)]
 
 
@@ -179,7 +229,7 @@ func ids() -> PackedStringArray:
 
 
 func get_save_data() -> Dictionary:
-	return {"ids": ids(), "reserved": PackedStringArray(_reserved.keys())}
+	return {"ids": ids(), "reserved": PackedStringArray(_reserved.keys()), "tier": reached_tier}
 
 
 ## A save without unlocks (older runs) gets the starting set.
@@ -195,4 +245,5 @@ func load_save_data(data: Dictionary) -> void:
 		_ids[String(id)] = true
 	for id in data.get("reserved", []):
 		_reserved[String(id)] = true
+	reached_tier = clampi(int(data.get("tier", 1)), 1, ResourceKind.MAX_TIER)
 	changed.emit()

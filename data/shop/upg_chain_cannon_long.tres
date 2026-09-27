@@ -15,9 +15,6 @@ requires = "blueprint:chain_cannon"
 rarity = 1
 upgrade_group = 0
 tags = PackedStringArray("weapon", "chain_cannon")
-base_cost = Dictionary[int, int]({
-5: 20,
-2: 12
-})
+base_cost = Dictionary[int, int]({2: 12, 1: 4})
 max_level = 1
 item_id = "behaviour.chain_cannon.long_chain"

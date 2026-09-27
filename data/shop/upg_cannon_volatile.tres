@@ -15,9 +15,6 @@ rarity = 1
 upgrade_group = 0
 requires = "blueprint:cannon"
 tags = PackedStringArray("weapon", "cannon")
-base_cost = Dictionary[int, int]({
-2: 15,
-1: 10
-})
+base_cost = Dictionary[int, int]({2: 12, 1: 6})
 max_level = 1
 item_id = "behaviour.cannon.explode_enemies"

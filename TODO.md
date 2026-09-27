@@ -288,6 +288,47 @@ First loop the player can actually watch happen.
 
 ---
 
+## Cohesion pass — see docs/DESIGN.md, "Cohesion pass"
+
+Each stage gets its own design questions and art list before it is built.
+
+### Stage 9 — The resource ladder
+- [x] Iron: a new resource and mine in the start valley; the pickaxe costs
+      iron (known from the start); arrow upgrades and gates use iron too
+- [x] Biomes to resources: start valley gold + iron, lava copper, water
+      quartz, ice diamond (snow in Stage 10), void a region cache for now;
+      biomes in distance rings until the mountains exist
+- [x] Re-cost everything by family (machines copper, elements quartz,
+      masterwork diamond); bridge costs copper, crossing quartz
+- [x] Blueprint caches carry their region's tier, the next gate first;
+      rarity grows with distance; drops never beyond the reached tier
+- [x] Slow XP down (about one pick every two days)
+- [ ] Playtest: prices, ring distances, how many region caches, XP pace
+
+### Stage 10 — Terrain
+- [ ] Larger map; mountains (impassable) splitting it into a chain of regions
+      with gated passes
+- [ ] Ice becomes a snowfield: thicker fog, slower movement
+- [ ] In the snow, weapons fire only at close enemies or inside a
+      watchtower's aimed vision cone
+- [ ] Performance check on the larger map
+
+### Stage 11 — Threat
+- [ ] Gentler nightly curve
+- [ ] Announced sieges (day and direction), much stronger
+- [ ] Expansion raises siege strength; biomes wake their own enemies
+
+### Stage 12 — Buildings and places
+- [ ] Building expansions, starting with the miner house growing around its
+      mine (tiers, sprites by the designer)
+- [ ] NPC house as a trader; special fruit tree (level-up or rare augment)
+- [ ] City hall as the diamond-tier building
+
+### Stage 13 — The run's arc
+- [ ] The heart in the void, the final siege, winning a run
+- [ ] Diamonds left at the end convert into relics
+- [ ] Relic tree toward variety; augments toward rule changes
+
 ## Later — noted so they are not lost
 
 - [ ] City hall (found as a blueprint): player-set task priorities for a
@@ -369,6 +410,11 @@ Full paths, 32x32 unless stated. Ticked = the file exists.
       enemies; without it, three circling dots
 - [ ] `assets/ui/tab_weapons.png`, `assets/ui/tab_workers.png`,
       `assets/ui/tab_utility.png` — optional 16x16 icons for the sub-tabs
+
+**9** (all have stand-ins)
+- [ ] `assets/buildings/mines/mine_iron.png` — 32x32; without it, the gold
+      mine in grey
+- [ ] `assets/ui/iron.png` — resource-bar icon, like `gold_coin.png`
 
 **8** (all have stand-ins)
 - [ ] `assets/ui/meta/<node id>.png` — 48x48 per node: `hearth`, `keen_edge`,

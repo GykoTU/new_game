@@ -66,15 +66,28 @@ const POI_FILES := {
 	"poi_blueprint_dropped": "res://assets/buildings/poi/blueprint_dropped.png",
 }
 
-## Environment patches: size range and which mine (if any) belongs in them.
-## Void only exists to hold quartz mines, so it's small and always gets one.
+## The iron mine's sprite. Not in BUILDING_FILES (whose files must exist):
+## until it is drawn, the gold mine is shown in grey.
+const IRON_MINE_FILE := "res://assets/buildings/mines/mine_iron.png"
+
+## Environment patches: size range, which mine (if any) belongs in them, and
+## (Stage 9) how far from the start they may lie, in tiles: the resource
+## ladder as distance rings until Stage 10's mountains gate it for real.
+## Lava (copper) near, water (quartz) further, ice (diamond) furthest. Void
+## holds no mine: its patches may hold a region cache (the run's finale
+## arrives there in Stage 13).
 const ENVIRONMENTS := {
-	Ground.FLOWERS: {"min_radius": 3, "max_radius": 7, "mine": ""},
-	Ground.ICE: {"min_radius": 3, "max_radius": 6, "mine": "mine_diamond"},
-	Ground.LAVA: {"min_radius": 3, "max_radius": 6, "mine": "mine_gold"},
-	Ground.WATER: {"min_radius": 3, "max_radius": 7, "mine": "mine_copper"},
-	Ground.VOID: {"min_radius": 1, "max_radius": 2, "mine": "mine_quartz"},
+	Ground.FLOWERS: {"min_radius": 3, "max_radius": 7, "mine": "", "ring": Vector2(0, 999)},
+	Ground.ICE: {"min_radius": 3, "max_radius": 6, "mine": "mine_diamond", "ring": Vector2(28, 999)},
+	Ground.LAVA: {"min_radius": 3, "max_radius": 6, "mine": "mine_copper", "ring": Vector2(11, 26)},
+	Ground.WATER: {"min_radius": 3, "max_radius": 7, "mine": "mine_quartz", "ring": Vector2(18, 36)},
+	Ground.VOID: {"min_radius": 1, "max_radius": 2, "mine": "", "ring": Vector2(22, 999)},
 }
+## The region tier of each gated biome (ResourceKind.TIER): what its caches
+## hold. Cobble counts as lava: it only ever comes from lava.
+const REGION_TIER := {Ground.LAVA: 2, Ground.COBBLE: 2, Ground.WATER: 3, Ground.ICE: 4, Ground.VOID: 4}
+## Every run has at least one patch of each (the ladder must be climbable).
+const REQUIRED_ENVIRONMENTS := [Ground.LAVA, Ground.WATER, Ground.ICE, Ground.VOID]
 
 const INVALID_CELL := Vector2i(-1, -1)
 
@@ -92,8 +105,13 @@ const INVALID_CELL := Vector2i(-1, -1)
 @export var environment_count := 16
 ## Minimum number of grass tiles between two different environments.
 @export var grass_gap := 3
-## Chance that an ice/lava/water patch gets a mine. Void patches always get one.
+## Chance that an ice/lava/water patch gets a mine. The nearest patch of each
+## always gets one.
 @export_range(0.0, 1.0) var mine_chance := 0.75
+## Chance that a lava/water/ice patch holds a region cache (Stage 9). The
+## nearest lava, water and void patches always do (lava and water hold the
+## next gate's blueprint).
+@export_range(0.0, 1.0) var region_cache_chance := 0.5
 ## How many tiles of sand surround water.
 @export var sand_width := 1
 
@@ -109,6 +127,13 @@ const INVALID_CELL := Vector2i(-1, -1)
 @export var start_open_radius := 5
 ## Trees guaranteed inside the clearing, since wood is the first thing a run needs.
 @export var start_trees := 6
+
+@export_group("Start valley mines")
+## Stage 9: gold and iron sit on open grass, no gate. One of each is always
+## inside the start clearing; these many more of each are scattered beyond it.
+@export var valley_mines: Dictionary[String, int] = {"mine_gold": 2, "mine_iron": 2}
+## How far from the start the scattered valley mines may lie, in tiles.
+@export var valley_mine_ring := Vector2(12, 26)
 
 @export_group("Points of interest")
 ## How many of each point of interest to try to place, by type.
@@ -162,10 +187,12 @@ func generate() -> void:
 		return
 	start_cell = _map_centre()
 	_generate_grass()
-	_place_start_ice()
 	_place_environments()
 	_place_mines()
+	_place_region_caches()
 	_surround_water_with_sand()
+	_place_start_mines()
+	_place_valley_mines()
 	_place_trees()
 	_ensure_start_trees()
 	_place_points_of_interest()
@@ -526,6 +553,8 @@ func _load_assets() -> bool:
 			push_error("LevelGenerator: missing building texture " + BUILDING_FILES[type])
 			return false
 		_building_textures[type] = tex
+	_building_textures["mine_iron"] = Art.texture(IRON_MINE_FILE) if Art.exists(IRON_MINE_FILE) \
+		else _grey(_building_textures["mine_gold"])
 	for type in POI_FILES:
 		_building_textures[type] = Art.texture(POI_FILES[type])
 	if not Art.exists(POI_FILES["poi_blueprint_dropped"]):
@@ -565,10 +594,19 @@ func _place_environments() -> void:
 	shape_noise.seed = _rng.randi()
 	shape_noise.frequency = 0.25
 
+	# The required ones first, so the ladder always has every rung; if a ring
+	# is too crowded they are tried again with the ring widened.
+	for type in REQUIRED_ENVIRONMENTS:
+		order.erase(type)
+		order.push_front(type)
 	for type in order:
 		var cfg: Dictionary = ENVIRONMENTS[type]
 		var radius := _rng.randi_range(cfg["min_radius"], cfg["max_radius"])
-		var center := _find_environment_spot(radius)
+		var center := _find_environment_spot(radius, cfg["ring"])
+		if center == INVALID_CELL and REQUIRED_ENVIRONMENTS.has(type) and not _has_environment(type):
+			var ring: Vector2 = cfg["ring"]
+			center = _find_environment_spot(cfg["min_radius"], Vector2(ring.x * 0.6, 999))
+			radius = cfg["min_radius"]
 		if center == INVALID_CELL:
 			continue
 		var cells := _paint_environment(type, center, radius, shape_noise)
@@ -582,19 +620,31 @@ func _place_environments() -> void:
 		})
 
 
-func _find_environment_spot(radius: int) -> Vector2i:
+func _has_environment(type: int) -> bool:
+	for env in _environments:
+		if env["type"] == type:
+			return true
+	return false
+
+
+## A free centre for a patch of `radius`, within `ring` (min, max tiles from
+## the start). INVALID_CELL if none was found.
+func _find_environment_spot(radius: int, ring := Vector2(0, 999)) -> Vector2i:
 	var margin := radius + 1
 	if map_size.x <= margin * 2 or map_size.y <= margin * 2:
 		return INVALID_CELL
 
-	for attempt in 60:
+	for attempt in 80:
 		var c := Vector2i(
 			_rng.randi_range(margin, map_size.x - 1 - margin),
 			_rng.randi_range(margin, map_size.y - 1 - margin)
 		)
 		var ok := true
-		# Keep the base's patch of grass open. (The start ice is placed before
-		# this runs and is already in _environments, so it is spaced like any other.)
+		if start_cell != INVALID_CELL:
+			var d := Vector2(c - start_cell).length()
+			if d < ring.x or d > ring.y:
+				continue
+		# Keep the base's patch of grass open.
 		if start_cell != INVALID_CELL and Vector2(c - start_cell).length() \
 				< start_open_radius + radius * 1.35 + grass_gap:
 			ok = false
@@ -656,19 +706,60 @@ func _place_mines() -> void:
 		var mine: String = ENVIRONMENTS[type]["mine"]
 		if mine == "":
 			continue
-		if type != Ground.VOID and not env.get("force_mine", false) and _rng.randf() > mine_chance:
+		if env != _nearest_environment(type) and _rng.randf() > mine_chance:
 			continue
 		var cell := _pick_interior_cell(env)
 		_surround(cell, type)
 		_add_building(cell, mine)
+		env["mine_cell"] = cell
 
 
-## Prefers a cell whose 8 neighbors already match; falls back to the patch center.
-func _pick_interior_cell(env: Dictionary) -> Vector2i:
+## The patch of `type` closest to the start, or {} if there is none.
+func _nearest_environment(type: int) -> Dictionary:
+	var best := {}
+	var best_d := INF
+	for env in _environments:
+		if env["type"] != type:
+			continue
+		var d := Vector2(env["center"] - start_cell).length()
+		if d < best_d:
+			best_d = d
+			best = env
+	return best
+
+
+## Stage 9: blueprint caches inside the gated biomes. They hold their
+## region's tier (PointsOfInterest reads the ground under them), so the
+## gate that reaches a resource also reaches its tech. The nearest lava and
+## water patches always have one (it holds the next gate's blueprint), and so
+## does the nearest void patch (the crossing must lead somewhere).
+func _place_region_caches() -> void:
+	for env in _environments:
+		var type: int = env["type"]
+		if not REGION_TIER.has(type):
+			continue
+		var forced: bool = type != Ground.ICE and env == _nearest_environment(type)
+		if not forced and _rng.randf() > region_cache_chance:
+			continue
+		var cell := _pick_interior_cell(env, 2)
+		if cell == INVALID_CELL and forced and not grid.is_occupied(env["center"]):
+			cell = env["center"]   # a small patch: _surround grows it round the cache
+		if cell == INVALID_CELL:
+			continue
+		_surround(cell, type)
+		_add_building(cell, PointsOfInterest.BLUEPRINT_CACHE)
+
+
+## Prefers a cell whose 8 neighbors already match; falls back to the patch
+## center. With `spacing`, only cells at least that far (in tiles, Chebyshev)
+## from any building, and INVALID_CELL if there is none.
+func _pick_interior_cell(env: Dictionary, spacing := 0) -> Vector2i:
 	var type: int = env["type"]
 	var candidates: Array[Vector2i] = []
 	for c in env["cells"]:
 		if grid.is_occupied(c):
+			continue
+		if spacing > 0 and _building_within(c, spacing):
 			continue
 		var interior := true
 		for n in _neighbors(c):
@@ -678,8 +769,19 @@ func _pick_interior_cell(env: Dictionary) -> Vector2i:
 		if interior:
 			candidates.append(c)
 	if candidates.is_empty():
+		if spacing > 0:
+			return INVALID_CELL
 		return env["center"]
 	return candidates[_rng.randi() % candidates.size()]
+
+
+func _building_within(cell: Vector2i, spacing: int) -> bool:
+	for dy in range(-spacing, spacing + 1):
+		for dx in range(-spacing, spacing + 1):
+			var n := cell + Vector2i(dx, dy)
+			if grid.in_bounds(n) and grid.is_occupied(n):
+				return true
+	return false
 
 
 func _surround(cell: Vector2i, type: int) -> void:
@@ -721,28 +823,66 @@ func _place_trees() -> void:
 					_add_building(c, "tree")
 
 
-## The start clearing always holds a small ice patch with a diamond mine, just
-## inside the revealed radius: diamonds are the one mine reachable from the
-## start, and a run whose clearing had none would stall before it began.
-func _place_start_ice() -> void:
-	var radius := 2
-	var shape_noise := FastNoiseLite.new()
-	shape_noise.seed = _rng.randi()
-	shape_noise.frequency = 0.25
-	# Far enough out to leave the base its open grass, near enough to be seen.
-	var dist := float(start_reveal_radius - radius - 1)
-	for attempt in 16:
-		var angle := _rng.randf() * TAU
-		var centre := start_cell + Vector2i((Vector2.RIGHT.rotated(angle) * dist).round())
-		if not grid.in_bounds(centre - Vector2i(radius + 1, radius + 1)) \
-				or not grid.in_bounds(centre + Vector2i(radius + 1, radius + 1)):
-			continue
-		var cells := _paint_environment(Ground.ICE, centre, radius, shape_noise)
-		if cells.size() < 5:
-			continue
-		_environments.append({"type": Ground.ICE, "center": centre, "radius": radius,
-			"cells": cells, "force_mine": true})
-		return
+## Stage 9: the start valley's metals. One gold and one iron mine sit on the
+## open grass just inside the revealed clearing, on opposite sides, so a run
+## can mine from the first minute; gold pays for workers, iron for the
+## pickaxe, arrow upgrades and gates.
+func _place_start_mines() -> void:
+	var dist := float(start_reveal_radius - 2)
+	var angle := _rng.randf() * TAU
+	for type in ["mine_gold", "mine_iron"]:
+		for attempt in 80:
+			# First near the chosen side; then anywhere in the clearing.
+			var a := angle + _rng.randf_range(-0.6, 0.6) if attempt < 24 else _rng.randf() * TAU
+			var d := dist if attempt < 24 else _rng.randf_range(start_open_radius, start_reveal_radius - 1)
+			var c := start_cell + Vector2i((Vector2.RIGHT.rotated(a) * d).round())
+			if _free_grass(c, 1):
+				_add_building(c, type)
+				break
+		angle += PI
+
+
+## More gold and iron on the valley's grass, beyond the clearing.
+func _place_valley_mines() -> void:
+	for type in valley_mines:
+		for n in valley_mines[type]:
+			for attempt in 60:
+				var c := Vector2i(_rng.randi_range(2, map_size.x - 3), _rng.randi_range(2, map_size.y - 3))
+				var d := Vector2(c - start_cell).length()
+				if d < valley_mine_ring.x or d > valley_mine_ring.y or not _free_grass(c, 2):
+					continue
+				_add_building(c, type)
+				break
+
+
+## Grass, in bounds, with nothing built within `spacing` tiles and grass all
+## round (a mine needs room for its miner house).
+func _free_grass(cell: Vector2i, spacing: int) -> bool:
+	if not grid.in_bounds(cell) or not grid.is_grass(grid.get_ground(cell)):
+		return false
+	for n in _neighbors(cell):
+		if not grid.in_bounds(n) or not grid.is_grass(grid.get_ground(n)):
+			return false
+	return not _building_within(cell, spacing)
+
+
+## A grey copy of a texture: the stand-in for a sprite not drawn yet.
+static func _grey(tex: Texture2D) -> Texture2D:
+	if tex == null:
+		return Art.fallback()
+	var img := tex.get_image()
+	if img == null:
+		return tex
+	img = img.duplicate()
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	for y in img.get_height():
+		for x in img.get_width():
+			var c := img.get_pixel(x, y)
+			var v := c.r * 0.3 + c.g * 0.59 + c.b * 0.11
+			img.set_pixel(x, y, Color(v * 0.95, v * 0.97, v * 1.05, c.a))
+	return ImageTexture.create_from_image(img)
 
 
 ## Tops the clearing up to start_trees plain trees, between the base's open

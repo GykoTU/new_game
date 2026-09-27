@@ -23,12 +23,14 @@ enum Tool { WALL, ROAD, BRIDGE, CROSSING }
 
 const R := ResourceKind.Id
 ## Per tile, paid when painted.
+## Stage 9: each gate pays with the rung before it. Gates are iron-bound;
+## a bridge (to quartz) costs copper, a crossing (into the void) quartz.
 const PRICES := {
 	"wall": {R.WOOD: 2},
-	"gate": {R.WOOD: 5},
+	"gate": {R.WOOD: 4, R.IRON: 1},
 	"road": {R.WOOD: 1},
-	"bridge": {R.WOOD: 3},
-	"crossing": {R.WOOD: 3, R.COPPER: 1},
+	"bridge": {R.WOOD: 2, R.COPPER: 1},
+	"crossing": {R.WOOD: 2, R.QUARTZ: 1},
 }
 ## The unlock that shows each tool in the item bar.
 const BLUEPRINTS := {

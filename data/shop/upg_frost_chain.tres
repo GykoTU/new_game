@@ -15,9 +15,6 @@ rarity = 1
 upgrade_group = 0
 requires = "blueprint:frost_tower"
 tags = PackedStringArray("weapon", "frost_tower")
-base_cost = Dictionary[int, int]({
-3: 10,
-5: 10
-})
+base_cost = Dictionary[int, int]({1: 8, 3: 3})
 max_level = 1
 item_id = "behaviour.frost_tower.chain"

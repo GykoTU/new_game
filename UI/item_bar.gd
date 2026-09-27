@@ -32,7 +32,7 @@ const ITEMS := [
 const TOOLS := [
 	[
 		["blueprint:wall", "Walls", "res://assets/ui/tool_wall.png",
-			"Drag to paint walls (2 wood each); hold Shift for gates (5 wood). Start on an unbuilt one to take it back.",
+			"Drag to paint walls (2 wood each); hold Shift for gates (4 wood and 1 iron). Start on an unbuilt one to take it back.",
 			"res://assets/buildings/walls/wall.png"],
 	],
 	[
@@ -42,12 +42,12 @@ const TOOLS := [
 	],
 	[
 		["blueprint:bridge", "Bridges", "res://assets/ui/tool_bridge.png",
-			"Drag over water to paint a bridge (3 wood each). Builders build out from the shore.",
+			"Drag over water to paint a bridge (2 wood and 1 copper each). Builders build out from the shore.",
 			"res://assets/ground/bridge.png"],
 	],
 	[
 		["blueprint:crossing", "Void crossings", "res://assets/ui/tool_crossing.png",
-			"Drag over void to paint a crossing (3 wood and 1 copper each). Builders build out from the edge.",
+			"Drag over void to paint a crossing (2 wood and 1 quartz each). Builders build out from the edge.",
 			"res://assets/ground/crossing.png"],
 	],
 ]

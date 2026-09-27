@@ -20,9 +20,7 @@ blueprint = "blueprint:hook_reach"
 requires = "blueprint:hook_tower"
 upgrade_group = 0
 tags = PackedStringArray("weapon", "hook_tower")
-base_cost = Dictionary[int, int]({
-5: 15
-})
+base_cost = Dictionary[int, int]({2: 6, 5: 10})
 cost_growth = 1.6
 max_level = 2
 modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])

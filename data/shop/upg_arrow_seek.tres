@@ -15,9 +15,6 @@ rarity = 1
 upgrade_group = 0
 requires = "blueprint:arrow_tower"
 tags = PackedStringArray("weapon", "arrow_tower")
-base_cost = Dictionary[int, int]({
-5: 20,
-2: 5
-})
+base_cost = Dictionary[int, int]({6: 10, 2: 5})
 max_level = 1
 item_id = "behaviour.arrow_tower.homing"

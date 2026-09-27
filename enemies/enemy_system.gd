@@ -234,7 +234,8 @@ func _kill(e: int, by_player: bool) -> void:
 		var kd := kinds[kind[e]]
 		xp_bank += kd.xp * max_hp[e] / maxf(kd.max_health, 1.0)
 	if by_player and unlocks != null and _rng.randf() < kinds[kind[e]].blueprint_drop_chance * drop_multiplier:
-		var blueprint := unlocks.pick_findable(_rng)
+		# Stage 9: a drop offers any tier the run has reached, never beyond.
+		var blueprint := unlocks.pick_findable(_rng, 0, unlocks.reached_tier)
 		if blueprint != "":
 			unlocks.reserve(blueprint)
 			blueprint_dropped.emit(blueprint, pos[e])

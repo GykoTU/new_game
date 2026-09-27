@@ -21,10 +21,7 @@ blueprint = "blueprint:whirl_blades"
 requires = "blueprint:whirl_tower"
 upgrade_group = 0
 tags = PackedStringArray("weapon", "whirl_tower")
-base_cost = Dictionary[int, int]({
-1: 8,
-5: 10
-})
+base_cost = Dictionary[int, int]({2: 8, 5: 10})
 cost_growth = 1.6
 max_level = 3
 modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])

@@ -8,7 +8,11 @@ extends RefCounted
 ## OPENED when the explorer has stood beside it for `open_seconds`:
 ##
 ##   blueprint cache  teaches a random findable blueprint (Unlocks.pick_findable),
-##                    then vanishes; relics instead once none is left
+##                    then vanishes; relics instead once none is left. Since
+##                    Stage 9 it holds its REGION's tier (the ground under it:
+##                    grass 1, lava or cobble 2, water 3, ice and void 4), a
+##                    lava or water cache first holds the next gate's
+##                    blueprint, and rares grow likelier with distance.
 ##   dropped blueprint  left by an enemy (add_dropped): holds the blueprint
 ##                    picked when it dropped, reserved until the explorer
 ##                    brings it in. Glows grey (common) or blue (rare).
@@ -44,6 +48,11 @@ var relics_per_cache := Vector2i(1, 3)
 var relic_bonus := 0
 ## Relics in a blueprint cache once there is no blueprint left to learn.
 var relics_instead_of_blueprint := 2
+## Chance that a cache's find is rare, near the start and far out (Stage 9):
+## it grows from x at RARE_NEAR tiles to y at RARE_FAR tiles.
+var rare_by_distance := Vector2(0.1, 0.45)
+const RARE_NEAR := 10.0
+const RARE_FAR := 40.0
 
 var level: LevelGenerator
 var unlocks: Unlocks
@@ -145,7 +154,8 @@ func open(id: int) -> String:
 	var message := ""
 	match type:
 		BLUEPRINT_CACHE:
-			var blueprint := unlocks.pick_findable(_rng)
+			var cell := level.store.get_cell(id)
+			var blueprint := unlocks.pick_findable(_rng, region_tier(cell), 0, rare_chance_at(cell))
 			if blueprint != "":
 				unlocks.add(blueprint)
 				message = _found(blueprint)
@@ -172,6 +182,17 @@ func open(id: int) -> String:
 			message = "Nothing here."
 	opened.emit(type, message)
 	return message
+
+
+## The tier of the region a cell lies in: what a cache there holds.
+func region_tier(cell: Vector2i) -> int:
+	return int(LevelGenerator.REGION_TIER.get(level.grid.get_ground(cell), 1))
+
+
+func rare_chance_at(cell: Vector2i) -> float:
+	var d := Vector2(cell - level.start_cell).length()
+	var t := clampf((d - RARE_NEAR) / (RARE_FAR - RARE_NEAR), 0.0, 1.0)
+	return lerpf(rare_by_distance.x, rare_by_distance.y, t)
 
 
 func _grant_relics(n: int, lead: String) -> String:

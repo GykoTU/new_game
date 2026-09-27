@@ -13,8 +13,5 @@ section = 1
 craft_group = 1
 blueprint = "blueprint:whirl_tower"
 tags = PackedStringArray("weapon", "whirl_tower")
-base_cost = Dictionary[int, int]({
-5: 25,
-1: 10
-})
+base_cost = Dictionary[int, int]({5: 25, 2: 10})
 building_id = "whirl_tower"

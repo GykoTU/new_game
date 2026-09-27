@@ -1381,6 +1381,53 @@ Files: `progression/progression.gd` (`Progression`, RefCounted),
 Per-building and per-worker XP is noted as a future direction and is not
 designed for yet.
 
+### The resource ladder (implemented, Stage 9)
+
+**Diagram: [`docs/resource-ladder.svg`](docs/resource-ladder.svg)** — tiers,
+where they lie, what opens them, and where a blueprint comes from.
+
+Files: `economy/resource_kind.gd`, `Level/level_generator.gd`,
+`economy/unlocks.gd`, `Level/points_of_interest.gd`, `Level/build_tools.gd`,
+`progression/progression.gd`, `data/shop/*.tres` (prices); small changes in
+`EnemySystem` (drops), `main.gd`, `UI/resource_bar.gd`, `UI/item_bar.gd`.
+
+- **Iron** is `ResourceKind.Id.IRON` (appended; save key `iron`, mined from
+  `mine_iron`). `ResourceKind.TIER`: wood, gold, iron 1; copper 2; quartz 3;
+  diamond 4. `tier_of_cost(cost)` is a price's highest tier.
+  `DISPLAY_ORDER` is the resource bar's order (up the ladder; fruit hidden).
+- **The map.** `ENVIRONMENTS` gives each biome its mine and a distance
+  `ring` from the start (lava 11-26 = copper, water 18-36 = quartz, ice 28+
+  = diamond, void 22+ = no mine). Lava, water, ice and void are placed first
+  and retried with a wider ring if crowded. The nearest patch of each always
+  gets its mine. The start clearing gets one gold and one iron mine on grass
+  (`_place_start_mines`, replacing the old start ice); `valley_mines` adds
+  more on grass 12-26 tiles out. The iron mine is drawn from
+  `mine_iron.png`, or the gold mine in grey until it exists.
+- **Region caches.** `_place_region_caches` puts blueprint caches inside
+  lava, water, ice and void patches, enclosed by their biome (so the gate
+  that reaches the resource reaches its tech). The nearest lava, water and
+  void patches always get one; others by `region_cache_chance`.
+- **Tiers of blueprints.** `Unlocks` gives each findable blueprint the tier
+  of its price (shop items; bridge and crossing from `BuildTools.PRICES`).
+  `pick_findable(rng, tier, max_tier, rare)`: a cache passes its region's
+  tier (`PointsOfInterest.region_tier`: the ground under it, cobble counting
+  as lava) and gets that tier's `GATE_KEYS` blueprint first (lava: bridge,
+  water: crossing), then that tier, then lower tiers; nothing left means
+  relics as before. Rarity grows with distance (`rare_chance_at`: 10% at 10
+  tiles to 45% at 40). Enemy drops pass `max_tier = unlocks.reached_tier`,
+  the highest tier of any resource the run has held (main's
+  `_on_resource_changed`; saved in `unlocks`, recomputed on load).
+- **Prices by family.** Machines (cannon, hook, chain cannon, whirl) and
+  their upgrades cost copper; elements (flame, frost) and theirs quartz;
+  arrow upgrades iron; rare one-offs add the next tier; watchtower quartz;
+  city hall diamond. Gates cost 4 wood + 1 iron, bridges 2 wood + 1 copper,
+  crossings 2 wood + 1 quartz. The pickaxe costs iron and is known from the
+  start.
+- **XP pace.** `Progression`: BASE_XP 50, GROWTH 1.25, drip 1 per 20 s, dawn
+  2 x night, 1 per 40 tiles, 5 per POI. Measured with a base and one arrow
+  tower: level 2 early on day 4, level 3 during day 5 (Stage 7 gave about
+  1.6 levels a day).
+
 ### Relic tree: meta progression (implemented, Stage 8)
 
 **Diagram: [`docs/relic-tree.svg`](docs/relic-tree.svg)** — where relics come

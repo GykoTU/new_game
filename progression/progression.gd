@@ -29,11 +29,13 @@ signal offer_ready(ids: PackedStringArray)
 signal augment_taken(id: String, stacks: int)
 
 const SOURCE_PREFIX := "aug:"
-const BASE_XP := 15.0
-const GROWTH := 1.3
-const DRIP_SECONDS := 10.0
-const DAWN_BONUS := 3
-const TILES_PER_XP := 25
+## Stage 9 pacing: about one pick every two days (a day and night are 3
+## minutes). Stage 7 had 15 / 1.3 / 10 s / 3 / 25, about 1.6 picks a day.
+const BASE_XP := 50.0
+const GROWTH := 1.25
+const DRIP_SECONDS := 20.0
+const DAWN_BONUS := 2
+const TILES_PER_XP := 40
 const POI_XP := 5
 const CHOICES := 3
 const RARITY_WEIGHT := {ShopItemData.Rarity.COMMON: 10.0, ShopItemData.Rarity.RARE: 3.0}

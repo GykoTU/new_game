@@ -18,9 +18,7 @@ icon_path = "res://assets/ui/upgrade_pickaxe.png"
 section = 2
 blueprint = "blueprint:pickaxe"
 tags = PackedStringArray()
-base_cost = Dictionary[int, int]({
-0: 40
-})
+base_cost = Dictionary[int, int]({6: 10})
 cost_growth = 1.5
 max_level = 5
 modifiers = Array[ExtResource("1_q71c8")]([SubResource("Resource_xvwxg")])

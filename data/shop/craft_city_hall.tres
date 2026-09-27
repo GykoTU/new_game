@@ -12,7 +12,5 @@ kind = 2
 section = 1
 blueprint = "blueprint:city_hall"
 tags = PackedStringArray("city_hall")
-base_cost = Dictionary[int, int]({
-5: 30
-})
+base_cost = Dictionary[int, int]({5: 30, 3: 8})
 building_id = "city_hall"

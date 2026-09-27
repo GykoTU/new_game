@@ -15,8 +15,21 @@ enum Id {
 	DIAMOND,
 	FRUIT,
 	WOOD,
+	IRON,       ## Stage 9: the start valley's second metal (pickaxe, arrows, gates)
 	COUNT,
 }
+
+## The resource ladder (Stage 9): the tier each resource belongs to. A
+## blueprint's tier is the highest tier among what it costs, and a cache
+## holds the tech of its region's tier (Unlocks, PointsOfInterest).
+##   1 start valley (wood, gold, iron)   2 lava (copper)   3 water (quartz)
+##   4 snowfield (diamond)
+const TIER := {Id.GOLD: 1, Id.QUARTZ: 3, Id.COPPER: 2, Id.DIAMOND: 4, Id.FRUIT: 1,
+	Id.WOOD: 1, Id.IRON: 1}
+const MAX_TIER := 4
+## The order resources are shown in: up the ladder. Fruit is left out while
+## it has no use.
+const DISPLAY_ORDER := [Id.WOOD, Id.GOLD, Id.IRON, Id.COPPER, Id.QUARTZ, Id.DIAMOND]
 
 const _TABLE := [
 	# id           save key    display     icon                               yielded by
@@ -26,6 +39,7 @@ const _TABLE := [
 	[Id.DIAMOND, "diamond", "Diamond", "res://assets/ui/diamond.png",   "mine_diamond"],
 	[Id.FRUIT,   "fruit",   "Fruit",   "res://assets/ui/fruit.png",     "tree_fruit"],
 	[Id.WOOD,    "wood",    "Wood",    "res://assets/ui/wood.png",      "tree"],
+	[Id.IRON,    "iron",    "Iron",    "res://assets/ui/iron.png",      "mine_iron"],
 ]
 
 static var _keys := PackedStringArray()
@@ -85,3 +99,16 @@ static func id_from_key(key: String) -> int:
 static func id_from_source(building_type: String) -> int:
 	var i := _sources.find(building_type)
 	return i
+
+
+static func tier_of(id: int) -> int:
+	return int(TIER.get(id, 1))
+
+
+## The tier of a price: the highest tier among its resources (1 if empty).
+static func tier_of_cost(cost: Dictionary) -> int:
+	var t := 1
+	for k in cost:
+		if int(cost[k]) > 0:
+			t = maxi(t, tier_of(int(k)))
+	return t

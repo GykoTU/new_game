@@ -1,6 +1,6 @@
 extends CanvasLayer
-## Resource counters along the top of the screen. One entry per ResourceKind,
-## so a new resource appears here without touching this file.
+## Resource counters along the top of the screen, in ResourceKind.DISPLAY_ORDER
+## (up the resource ladder), so a new resource appears here by adding it there.
 
 ## Keep this a whole multiple of the art's 32 px. Pixel art scaled by a fraction
 ## (24 px is 0.75x) gets uneven pixel widths and looks smudged.
@@ -32,7 +32,7 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 28)
 	panel.add_child(row)
 
-	for kind in ResourceKind.count():
+	for kind in ResourceKind.DISPLAY_ORDER:
 		var cell := HBoxContainer.new()
 		cell.add_theme_constant_override("separation", 6)
 		cell.tooltip_text = ResourceKind.display_of(kind)
@@ -62,4 +62,5 @@ func bind(economy: Economy) -> void:
 
 
 func _on_changed(kind: int, amount: int) -> void:
-	_labels[kind].text = str(amount)
+	if _labels.has(kind):
+		_labels[kind].text = str(amount)
