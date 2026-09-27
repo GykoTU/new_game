@@ -55,7 +55,7 @@ func _ready() -> void:
 	column.add_child(row)
 	_reroll = Button.new()
 	_reroll.text = "Reroll"
-	_reroll.tooltip_text = "Draw three new cards. Once per level-up."
+	_reroll.tooltip_text = "Draw new cards. Once per level-up, unless the relic tree gives more."
 	_reroll.custom_minimum_size = Vector2(150, 36)
 	_reroll.focus_mode = Control.FOCUS_NONE
 	_reroll.pressed.connect(func(): rerolled.emit())
@@ -77,14 +77,16 @@ static func art_paths(pool: AugmentPool) -> Array:
 
 ## Shows one offer. `augments` are the offered AugmentData; `stacks` how many
 ## of each the player has already.
-func show_offer(level: int, augments: Array, stacks: Array, can_reroll: bool, skip_gold: int) -> void:
+## `rerolls` is how many are left for this pick; the count shows when above one.
+func show_offer(level: int, augments: Array, stacks: Array, rerolls: int, skip_gold: int) -> void:
 	_title.text = "Level %d!" % level
 	for c in _cards.get_children():
 		_cards.remove_child(c)
 		c.queue_free()
 	for n in augments.size():
 		_cards.add_child(_card(augments[n], int(stacks[n])))
-	_reroll.disabled = not can_reroll
+	_reroll.disabled = rerolls <= 0
+	_reroll.text = "Reroll" if rerolls <= 1 else "Reroll  (%d)" % rerolls
 	_skip.text = "Skip  (+%d gold)" % skip_gold
 	visible = true
 

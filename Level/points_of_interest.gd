@@ -40,6 +40,8 @@ const DROP_SEARCH := 3
 var open_seconds := 3.0
 ## Relics in a relic cache, inclusive range.
 var relics_per_cache := Vector2i(1, 3)
+## Extra relics in every relic cache (the relic tree's Relic Sense; per run).
+var relic_bonus := 0
 ## Relics in a blueprint cache once there is no blueprint left to learn.
 var relics_instead_of_blueprint := 2
 
@@ -157,7 +159,7 @@ func open(id: int) -> String:
 			message = _found(blueprint) if blueprint != "" else "Nothing here."
 			level.remove_building(level.store.get_cell(id))
 		RELIC_CACHE:
-			message = _grant_relics(_rng.randi_range(relics_per_cache.x, relics_per_cache.y), "")
+			message = _grant_relics(_rng.randi_range(relics_per_cache.x, relics_per_cache.y) + relic_bonus, "")
 			level.remove_building(level.store.get_cell(id))
 		NPC_HOUSE:
 			_visited[id] = true

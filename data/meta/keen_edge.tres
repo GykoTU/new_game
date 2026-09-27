@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="MetaNodeData" format=3]
+
+[ext_resource type="Script" path="res://progression/meta_node_data.gd" id="1_node"]
+[ext_resource type="Script" path="res://stats/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_0"]
+script = ExtResource("2_mod")
+stat = 0
+op = 1
+value = 0.05
+tags = PackedStringArray("weapon")
+
+[resource]
+script = ExtResource("1_node")
+id = "keen_edge"
+display_name = "Keen Edge"
+description = "+5% damage for every weapon, per level."
+icon_path = "res://assets/ui/meta/keen_edge.png"
+branch = 1
+position = Vector2(-160, -70)
+links = PackedStringArray("hearth")
+costs = PackedInt32Array(3, 5, 8)
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])

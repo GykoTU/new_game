@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="MetaNodeData" format=3]
+
+[ext_resource type="Script" path="res://progression/meta_node_data.gd" id="1_node"]
+
+[resource]
+script = ExtResource("1_node")
+id = "wildfire_lore"
+display_name = "Wildfire Lore"
+description = "The Wildfire augment can be offered in runs. Needs Sturdy Base and Relic Sense."
+icon_path = "res://assets/ui/meta/wildfire_lore.png"
+branch = 4
+position = Vector2(0, 150)
+links = PackedStringArray("sturdy_base", "relic_sense")
+needs_all = true
+costs = PackedInt32Array(6)
+unlocks_content = PackedStringArray("augment:wildfire")

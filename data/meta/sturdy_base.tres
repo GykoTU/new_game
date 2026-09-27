@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="MetaNodeData" format=3]
+
+[ext_resource type="Script" path="res://progression/meta_node_data.gd" id="1_node"]
+[ext_resource type="Script" path="res://stats/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_0"]
+script = ExtResource("2_mod")
+stat = 20
+op = 1
+value = 0.1
+tags = PackedStringArray("base")
+
+[resource]
+script = ExtResource("1_node")
+id = "sturdy_base"
+display_name = "Sturdy Base"
+description = "+10% health for the base, per level."
+icon_path = "res://assets/ui/meta/sturdy_base.png"
+branch = 3
+position = Vector2(-160, 70)
+links = PackedStringArray("hearth")
+costs = PackedInt32Array(3, 5, 8)
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])

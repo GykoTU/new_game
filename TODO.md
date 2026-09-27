@@ -272,8 +272,19 @@ First loop the player can actually watch happen.
 
 ## Stage 8 — Meta progression
 
-- [ ] Permanent currency earned per run
-- [ ] Profile save, meta-upgrade screen on the title screen
+- [x] Permanent currency: relics from caches and a survival payout
+      (1 per night survived + 1 per 3 levels)
+- [x] Profile save (`meta`), relic tree screen on the title screen
+- [x] Tree grows from the Hearth in four branches; synergy nodes need both
+      neighbours; free full refund
+- [x] Foundation nodes for all four kinds: stat boosts, starting
+      blueprints, content unlocks (whirl tower, Wildfire), run perks
+      (rerolls, cards, relics per cache, extra builder, starting gold)
+- [x] A run keeps the tree it started with (snapshot in the run save)
+- [ ] Grow the tree during the cohesion pass (more nodes, deeper branches,
+      more locked content)
+- [ ] Balancing: node prices, payout, how many runs to fill the tree (106
+      relics today)
 
 ---
 
@@ -287,7 +298,7 @@ First loop the player can actually watch happen.
 - [ ] House occupancy upgrades: houses hold more units, and the building
       visibly expands
 - [ ] Fruit: gatherable again, possibly as a special-fruit point of interest
-- [ ] Relics (found at points of interest since 3b) feed Stage 8
+- [x] Relics (found at points of interest since 3b) feed Stage 8
 
 ## Continuous
 
@@ -358,6 +369,13 @@ Full paths, 32x32 unless stated. Ticked = the file exists.
       enemies; without it, three circling dots
 - [ ] `assets/ui/tab_weapons.png`, `assets/ui/tab_workers.png`,
       `assets/ui/tab_utility.png` — optional 16x16 icons for the sub-tabs
+
+**8** (all have stand-ins)
+- [ ] `assets/ui/meta/<node id>.png` — 48x48 per node: `hearth`, `keen_edge`,
+      `cannon_plans`, `stockpile`, `extra_hands`, `sturdy_base`,
+      `second_thoughts`, `relic_sense`, `wider_choice`, `whirl_schematics`,
+      `wildfire_lore`; without it, initials in the branch colour
+- [ ] `assets/ui/meta/tree_background.png` — optional 1152x648 background
 
 **7** (all have stand-ins)
 - [ ] `assets/ui/augments/<id>.png` — 64x64 icon per augment, one per file in

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="MetaNodeData" format=3]
+
+[ext_resource type="Script" path="res://progression/meta_node_data.gd" id="1_node"]
+
+[resource]
+script = ExtResource("1_node")
+id = "whirl_schematics"
+display_name = "Whirl Schematics"
+description = "The whirl tower can be found in runs. Needs Keen Edge and Stockpile."
+icon_path = "res://assets/ui/meta/whirl_schematics.png"
+branch = 1
+position = Vector2(0, -150)
+links = PackedStringArray("keen_edge", "stockpile")
+needs_all = true
+costs = PackedInt32Array(6)
+unlocks_content = PackedStringArray("blueprint:whirl_tower")

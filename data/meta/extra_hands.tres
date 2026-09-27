@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="MetaNodeData" format=3]
+
+[ext_resource type="Script" path="res://progression/meta_node_data.gd" id="1_node"]
+
+[resource]
+script = ExtResource("1_node")
+id = "extra_hands"
+display_name = "Extra Hands"
+description = "Start every run with a second builder."
+icon_path = "res://assets/ui/meta/extra_hands.png"
+branch = 2
+position = Vector2(330, -135)
+links = PackedStringArray("stockpile")
+costs = PackedInt32Array(8)
+start_workers = Dictionary[int, int]({1: 1})

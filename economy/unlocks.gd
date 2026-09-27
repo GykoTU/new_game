@@ -12,6 +12,10 @@ extends RefCounted
 ##
 ## A blueprint lying on the map in a dropped cache is RESERVED: it cannot be
 ## picked again until the explorer brings it in (or the cache is lost).
+##
+## A LOCKED blueprint (Stage 8) is kept out of the pool until its relic-tree
+## node is bought. main.gd sets the locks from the run's tree snapshot; they
+## are not saved here.
 
 signal changed
 
@@ -63,6 +67,7 @@ var _reserved := {}
 var _rarity := {}     # blueprint -> Rarity (missing: common)
 var _requires := {}   # blueprint -> blueprint that must be known first
 var _names := {}      # blueprint -> what the player calls it
+var _locked := {}     # blueprint -> true: not findable this run (relic tree)
 
 
 ## The pool from the shop: every item's blueprint that a run does not start
@@ -138,7 +143,17 @@ func is_reserved(id: String) -> bool:
 ## Could be found right now: unknown, not lying on the map, and whatever it
 ## requires is known.
 func is_findable(id: String) -> bool:
-	return not _ids.has(id) and not _reserved.has(id) and has(String(_requires.get(id, "")))
+	return not _ids.has(id) and not _reserved.has(id) and not _locked.has(id) \
+		and has(String(_requires.get(id, "")))
+
+
+## Blueprints kept out of this run's pool: {"blueprint:whirl_tower": true}.
+func set_locked(blueprints: Dictionary) -> void:
+	_locked = blueprints.duplicate()
+
+
+func is_locked(id: String) -> bool:
+	return _locked.has(id)
 
 
 ## A random findable blueprint (rarity first, then uniformly), or "" if none

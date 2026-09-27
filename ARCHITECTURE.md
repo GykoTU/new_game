@@ -990,7 +990,8 @@ right after the run save that no longer holds their caches, and death banks
 the rest. Writing them at once would let a player open a cache, quit without
 saving, reload the dawn save and open it again. If the run save fails, the
 relics go back to pending. The run summary lists relics found; the title
-screen shows the total once there is one.
+screen shows the total once there is one. Since Stage 8 they are spent on the
+relic tree, and a fallen run pays relics for surviving too.
 
 **Watchtower and city hall** are the findable blueprints. The watchtower is a
 `reveal_radius` 12 building; the city hall is unique and does nothing yet.
@@ -1380,6 +1381,50 @@ Files: `progression/progression.gd` (`Progression`, RefCounted),
 Per-building and per-worker XP is noted as a future direction and is not
 designed for yet.
 
+### Relic tree: meta progression (implemented, Stage 8)
+
+**Diagram: [`docs/relic-tree.svg`](docs/relic-tree.svg)** — where relics come
+from, who can be bought, and why a run keeps the tree it started with.
+
+Files: `progression/meta_node_data.gd` (`MetaNodeData`),
+`progression/meta_tree.gd` (`MetaTree`), `progression/meta_state.gd`
+(`MetaState`), `data/meta/*.tres` + `tree.tres`, `UI/meta_tree_screen.gd`;
+changes in `game/title_screen.gd`, `main.gd`, `Progression`, `Unlocks`,
+`PointsOfInterest`, `UnitSystem.start_run_kit`, `SaveManager` (profile key).
+
+- **Relics** come from relic caches (as since 3b) and, since Stage 8, from
+  the fall of the base: `main.survival_relics()` = nights survived
+  (`day - 1`) + `level / SURVIVAL_LEVELS` (3). Both go into
+  `profile["relics"]` in `_end_run`; the summary shows "Relics for
+  surviving".
+- **The tree** is data: `MetaNodeData` has a branch (colour only: ROOT,
+  ARMS, HANDS, WALLS, PATHS), a screen `position`, `links` to the nodes it
+  grows from, `needs_all` (a synergy node between two branches needs both),
+  and `costs` per level (empty = the root, always owned). Effects, any mix:
+  `modifiers` (scaled per level like upgrade levels), `start_resources`,
+  `start_workers`, `start_blueprints`, `unlocks_content`
+  (`"blueprint:…"` / `"augment:…"` kept out of runs until owned) and
+  `perks` (`rerolls`, `choices`, `relic_bonus`).
+- **Buying.** `MetaState` holds `{node id: level}` over a `MetaTree`. A node
+  can be bought when not maxed and its links are met. Only a full refund
+  exists (`refund_all`, free), so no owned node ever hangs from a sold one.
+  The screen writes `profile["relics"]` and `profile["meta"]` at once.
+- **A run keeps the tree it started with.** `_start_new_run` builds
+  `main.meta` from the profile and applies: extra starting resources,
+  starting blueprints, `"meta:<id>"` modifier sources, and
+  `_apply_meta_rules()` (Unlocks locks, Progression locks, rerolls per pick,
+  choices, relic bonus); the base's placement adds `start_workers`. Saved as
+  `meta: {levels, locks}` and loaded **first**, so perks shape progression's
+  load and `meta:` sources resolve from the snapshot. A run saved before
+  Stage 8 has `locks = false`: nothing is locked for it.
+- **Content locked today:** the whirl tower blueprint (and so its upgrades)
+  and the Wildfire augment.
+- **UI.** Title screen: a "Relic Tree" button opens `meta_tree_screen.gd`
+  (CanvasLayer 5): nodes as circles on lines drawn by an inner
+  `TreeCanvas`, an info panel for the hovered node, Refund all (click
+  twice), Back (or Esc). Icons `assets/ui/meta/<id>.png`, background
+  `assets/ui/meta/tree_background.png`, both optional.
+
 ---
 
 ## 8. EventBus contract
@@ -1437,9 +1482,11 @@ one key in `main.gd.save_run()`, never touching the autoload.
 
     level, clock, economy, roster, shop, modifiers, units,
     unlocks, inventory, forest, lava, director, poi, enemies, waves, weapons,
-    demolition, build_tools, progression
+    demolition, build_tools, progression, meta
 
-Load order is load-bearing: **shop purchases and progression before
+Load order is load-bearing: **meta first** (the run's relic-tree snapshot:
+its perks and locks shape the loads below, and its modifier sources rebuild
+from it); **shop purchases and progression before
 modifiers** (augment modifiers read their stacks), because
 rebuilding an upgrade's modifiers reads its level from the purchase count; and
 **modifiers before the level**, because they are cheap to reject, so a run with
@@ -1466,7 +1513,8 @@ thing a player would genuinely mourn. Keys added since a file was written take
 their default on load, so additive changes need no migration step; only a change
 in meaning needs one, and those go in `_migrate_profile` one version step at a time.
 
-Today the profile holds statistics. Meta-currency and unlocks join it in Stage 8.
+The profile holds statistics, `relics` (unspent) and, since Stage 8, `meta`
+(the relic tree, `{node id: level}`), all additive keys.
 
 ### Writing safely
 

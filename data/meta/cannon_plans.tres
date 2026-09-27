@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="MetaNodeData" format=3]
+
+[ext_resource type="Script" path="res://progression/meta_node_data.gd" id="1_node"]
+
+[resource]
+script = ExtResource("1_node")
+id = "cannon_plans"
+display_name = "Cannon Plans"
+description = "Every run starts knowing the cannon."
+icon_path = "res://assets/ui/meta/cannon_plans.png"
+branch = 1
+position = Vector2(-330, -135)
+links = PackedStringArray("keen_edge")
+costs = PackedInt32Array(8)
+start_blueprints = PackedStringArray("blueprint:cannon")

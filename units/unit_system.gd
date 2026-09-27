@@ -201,7 +201,8 @@ func house_of_mine(mine: int) -> int:
 ## The free start of every run: a builder house and a carrier house next to
 ## the base, a builder and a carrier inside them, and the first miner, who
 ## waits in the base (see _commuter). Called when the base is placed.
-func start_run_kit() -> void:
+## `extra` (WorkerRoster.Kind -> count) is the relic tree's extra workers.
+func start_run_kit(extra: Dictionary = {}) -> void:
 	var base := _base_id()
 	if base == UnitStore.NONE:
 		return
@@ -212,6 +213,9 @@ func start_run_kit() -> void:
 	spawn_bought(WorkerRoster.Kind.BUILDER)
 	spawn_bought(WorkerRoster.Kind.CARRIER)
 	_commuter = spawn_bought(WorkerRoster.Kind.MINER)
+	for kind in extra:
+		for i in int(extra[kind]):
+			spawn_bought(int(kind))
 
 
 ## Adds one unit, as if bought. Builders and carriers move into a house with a

@@ -14,6 +14,8 @@ const PAUSE_OPTIONS := "options_menu"
 const PAUSE_GAME_OVER := "game_over"
 ## The level-up screen holds the clock while a pick is pending (Stage 7).
 const PAUSE_LEVEL_UP := "level_up"
+## A fallen run pays one relic per this many levels reached (Stage 8).
+const SURVIVAL_LEVELS := 3
 
 ## Stat blocks for unit types, one per TYPE (D7). Keys match WorkerRoster's
 ## save keys. "base" overrides registry defaults; "stats" is what the F3
@@ -45,6 +47,9 @@ const UNIT_TYPES := {
 @export var starting_resources: Dictionary[ResourceKind.Id, int] = {ResourceKind.Id.GOLD: 100}
 @export var shop_catalogue: ShopCatalogue = preload("res://data/shop/catalogue.tres")
 @export var augment_pool: AugmentPool = preload("res://data/augments/pool.tres")
+## Stage 8: the relic tree. The run keeps a snapshot of what was owned when it
+## started (`meta`), so the title screen's tree only changes the next run.
+@export var meta_tree: MetaTree = preload("res://data/meta/tree.tres")
 ## Every kind of enemy (Stage 4). Saves refer to them by id, not by position here.
 @export var enemy_kinds: Array[EnemyData] = [
 	preload("res://data/enemies/goblin.tres"),
@@ -120,6 +125,12 @@ var progression := Progression.new()
 var building_stats := BuildingStats.new()
 var level_up
 var xp_bar
+## Stage 8: the relic tree as it was when this run started.
+var meta: MetaState
+## False for a run saved before Stage 8: nothing is locked for it.
+var _meta_locks := true
+## Relics paid for surviving, shown in the summary (Stage 8).
+var _survival_relics := 0
 var _counting_reveals := true
 var _night_number := 1
 var _paint_gate := false  # this stroke paints gates (Shift at its start)
@@ -435,13 +446,27 @@ func _start_new_run() -> void:
 	unlocks.reset()
 	inventory.clear()
 	lava.clear()
-	economy.set_all(starting_resources)
+	# The relic tree as owned right now: this run keeps it (see `meta`).
+	meta = MetaState.new(meta_tree, SaveManager.profile.get("meta", {}))
+	_meta_locks = true
+	_survival_relics = 0
+	var start := starting_resources.duplicate()
+	var bonus := meta.start_resources()
+	for k in bonus:
+		start[k] = int(start.get(k, 0)) + int(bonus[k])
+	economy.set_all(start)
+	for b in meta.start_blueprints():
+		unlocks.add(b)
+	var sources := meta.modifier_sources()
+	for source in sources:
+		modifiers.add_source(source, sources[source])
 	level.generate()
 	pois.clear()
 	waves.clear()
 	forest.start_new(clock.tick_count, level.used_seed)
 	clock.pop_pause(PAUSE_LEVEL_UP)
 	level_up.hide_screen()
+	_apply_meta_rules()
 	progression.reset(level.used_seed + 7)
 	_apply_augment_rules()
 	_focus_camera(level.cell_to_world(level.start_cell))
@@ -461,6 +486,13 @@ func _start_new_run() -> void:
 ## Keys missing from older saves are additive: a run saved before the economy
 ## existed gets the starting resources, and so on. RUN_VERSION did not move.
 func _load_run(save: Dictionary) -> bool:
+	# First: the tree this run started with. Its perks shape how progression
+	# loads, and its "meta:" modifier sources are rebuilt from it.
+	var saved_meta: Dictionary = save.get("meta", {})
+	meta = MetaState.new(meta_tree, saved_meta.get("levels", {}))
+	_meta_locks = bool(saved_meta.get("locks", false))   # older runs: nothing locked
+	_survival_relics = 0
+	_apply_meta_rules()
 	if save.has("economy"):
 		if not economy.load_save_data(save["economy"]):
 			return false
@@ -484,6 +516,7 @@ func _load_run(save: Dictionary) -> bool:
 	forest.load_save_data(save.get("forest", {}))
 	lava.load_save_data(save.get("lava", {}))
 	pois.load_save_data(save.get("poi", {}))
+	pois.relic_bonus = meta.perk("relic_bonus")
 	enemies.load_save_data(save.get("enemies", {}))
 	weapons.load_save_data(save.get("weapons", {}))
 	demolition.load_save_data(save.get("demolition", {}))
@@ -529,6 +562,7 @@ func save_run() -> void:
 		"demolition": demolition.get_save_data(),
 		"build_tools": build_tools.get_save_data(),
 		"progression": progression.get_save_data(),
+		"meta": {"levels": meta.get_levels(), "locks": _meta_locks},
 		# progression joins this as it is built. SaveManager neither knows nor
 		# cares what these keys mean.
 	})
@@ -553,6 +587,8 @@ func _bank_relics(n: int) -> void:
 func _resolve_modifier_source(source: String) -> Variant:
 	if source.begins_with(Progression.SOURCE_PREFIX):
 		return progression.resolve_source(source)
+	if source.begins_with(MetaState.SOURCE_PREFIX):
+		return meta.resolve_source(source)
 	return shop.resolve_source(source)
 
 
@@ -628,7 +664,8 @@ func _end_run() -> void:
 	profile["runs_ended"] = int(profile.get("runs_ended", 0)) + 1
 	profile["best_day"] = maxi(int(profile.get("best_day", 0)), director.day)
 	profile["total_ticks"] = int(profile.get("total_ticks", 0)) + clock.tick_count
-	profile["relics"] = int(profile.get("relics", 0)) + pois.take_pending_relics()
+	_survival_relics = survival_relics()
+	profile["relics"] = int(profile.get("relics", 0)) + pois.take_pending_relics() + _survival_relics
 	SaveManager.save_profile()
 	run_summary.show_run("Your base has fallen", _summary_rows())
 
@@ -649,8 +686,26 @@ func _summary_rows() -> Array:
 			rows.append([ResourceKind.display_of(kind), str(amount)])
 	rows.append(["Level reached", str(progression.level)])
 	rows.append(["Relics found", str(pois.relics_found)])
+	rows.append(["Relics for surviving", str(_survival_relics)])
 	rows.append(["Best day so far", str(int(SaveManager.profile.get("best_day", 0)))])
 	return rows
+
+
+## Stage 8: what a fallen run pays into the relic tree on top of the relics
+## it found: one per night survived, one per SURVIVAL_LEVELS levels reached.
+func survival_relics() -> int:
+	@warning_ignore("integer_division")
+	return maxi(director.day - 1, 0) + progression.level / SURVIVAL_LEVELS
+
+
+## The relic tree's rules for this run: locks, perks. Called on a new run
+## (before progression resets) and on load (before progression loads).
+func _apply_meta_rules() -> void:
+	unlocks.set_locked(meta.locked_with_prefix("blueprint:") if _meta_locks else {})
+	progression.locked = meta.locked_with("augment:") if _meta_locks else {}
+	progression.rerolls_per_pick = 1 + meta.perk("rerolls")
+	progression.choices = Progression.CHOICES + meta.perk("choices")
+	pois.relic_bonus = meta.perk("relic_bonus")
 
 
 func _return_to_title() -> void:
@@ -686,6 +741,7 @@ func _referenced_art() -> Array:
 	paths.append(DigMarks.MARK)
 	paths.append_array(preload("res://UI/level_up.gd").art_paths(augment_pool))
 	paths.append_array(preload("res://UI/xp_bar.gd").art_paths())
+	paths.append_array(preload("res://UI/meta_tree_screen.gd").art_paths(meta_tree))
 	paths.append_array(WallTiles.art_paths())
 	paths.append_array(OverlayRenderer.art_paths())
 	paths.append_array(preload("res://UI/shop_ui.gd").art_paths())
@@ -809,7 +865,7 @@ func _on_offer_ready(ids: PackedStringArray) -> void:
 		stacks.append(progression.stacks_of(id))
 	clock.push_pause(PAUSE_LEVEL_UP)
 	level_up.show_offer(progression.pick_level(), augments, stacks,
-		not progression.reroll_used, progression.skip_gold())
+		progression.rerolls_left, progression.skip_gold())
 
 
 func _after_pick() -> void:
@@ -856,7 +912,7 @@ func _on_level_generated() -> void:
 
 func _on_placement_finished(type: String, _cell: Vector2i) -> void:
 	if type == "base":
-		units.start_run_kit()
+		units.start_run_kit(meta.start_workers())
 	else:
 		inventory.take(type)   # placed from the building bar
 		toast.hide_message()

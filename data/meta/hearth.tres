@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="MetaNodeData" format=3]
+
+[ext_resource type="Script" path="res://progression/meta_node_data.gd" id="1_node"]
+
+[resource]
+script = ExtResource("1_node")
+id = "hearth"
+display_name = "The Hearth"
+description = "Where every run begins. Everything grows from here."
+icon_path = "res://assets/ui/meta/hearth.png"
+branch = 0
+position = Vector2(0, 0)
+links = PackedStringArray()
+costs = PackedInt32Array()

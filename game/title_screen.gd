@@ -1,20 +1,54 @@
 extends Control
 
 const RELIC_ICON := "res://assets/ui/relic.png"
+const META_TREE := preload("res://data/meta/tree.tres")
 
 @onready var continue_button = $VBoxContainer/ContinueButton
 
+var _relic_row: HBoxContainer
+var _tree_button: Button
+var _tree_screen
+
+
 func _ready():
 	continue_button.disabled = not SaveManager.has_run()
+	# Stage 8: the relic tree, between runs.
+	_tree_button = Button.new()
+	_tree_button.name = "RelicTreeButton"
+	_tree_button.text = "Relic Tree"
+	_tree_button.pressed.connect(open_relic_tree)
+	$VBoxContainer.add_child(_tree_button)
+	$VBoxContainer.move_child(_tree_button, continue_button.get_index() + 1)
+	_tree_screen = preload("res://UI/meta_tree_screen.gd").new()
+	_tree_screen.name = "RelicTree"
+	_tree_screen.visible = false
+	add_child(_tree_screen)
+	_tree_screen.closed.connect(_on_tree_closed)
 	_add_relic_count()
 
-## Relics are kept across runs (Stage 3b; spent in Stage 8). Shown only once
-## the player has found some, so a first-time player isn't shown a zero.
+
+func open_relic_tree() -> void:
+	$VBoxContainer.visible = false
+	_tree_screen.open(META_TREE)
+
+
+func _on_tree_closed() -> void:
+	$VBoxContainer.visible = true
+	_add_relic_count()
+
+
+## Relics are kept across runs (Stage 3b; spent on the relic tree since
+## Stage 8). Shown only once the player has some, so a first-time player
+## isn't shown a zero.
 func _add_relic_count() -> void:
+	if _relic_row != null:
+		_relic_row.queue_free()
+		_relic_row = null
 	var relics := int(SaveManager.profile.get("relics", 0))
 	if relics <= 0:
 		return
 	var row := HBoxContainer.new()
+	_relic_row = row
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 6)
 	var icon := TextureRect.new()

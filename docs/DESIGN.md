@@ -238,6 +238,22 @@ Sales work in both sections (a SHOP_PRICE modifier, already built).
   their tag (Wildfire needs two fire augments).
 - Several level-ups at once queue up and are picked one after another.
 
+## Relic tree (decided)
+
+- **Relics** are spent between runs on the **relic tree**, from the title
+  screen. You earn them from **relic caches** and when your base falls:
+  **one per night survived** plus **one per three levels** reached.
+- The tree grows from **the Hearth** in four branches: **Arms** (weapons),
+  **Hands** (workers and economy), **Walls** (defence) and **Paths**
+  (exploration and level-ups). A node can be bought once a neighbour is
+  owned; a **synergy node** between two branches needs both.
+- Nodes can make you stronger (more damage, more base health), start runs
+  better (gold, a second builder, knowing the cannon), **unlock content**
+  (the whirl tower and the Wildfire augment only appear once bought) and
+  change rules (an extra reroll, four augment cards, more relics per cache).
+- **Refunds are free and total**: one button gives every relic back.
+- A run keeps the tree it started with; changes apply to the next run.
+
 ## The end of a run (decided)
 
 - The run ends when **the base is destroyed**. Nothing else ends it.
@@ -269,7 +285,7 @@ Sales work in both sections (a SHOP_PRICE modifier, already built).
   - an **NPC living in a house** and a **special fruit tree** are placeholders
     for now: visited once, they only show a message. *Their effects are open.*
 - **Relics** are the meta currency. They are kept across runs in the profile
-  (spent in Stage 8) and count once the run is saved — at dawn, on quitting,
+  (spent on the relic tree) and count once the run is saved — at dawn, on quitting,
   or when the base falls.
 - **Watchtower**: a crafted building that clears the fog far around it (12
   tiles) once built. **City hall**: found and placeable; its priorities

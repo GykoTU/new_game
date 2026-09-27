@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="MetaTree" format=3]
+
+[ext_resource type="Script" path="res://progression/meta_tree.gd" id="1_tree"]
+[ext_resource type="Script" path="res://progression/meta_node_data.gd" id="2_node"]
+[ext_resource type="Resource" path="res://data/meta/hearth.tres" id="n0"]
+[ext_resource type="Resource" path="res://data/meta/keen_edge.tres" id="n1"]
+[ext_resource type="Resource" path="res://data/meta/cannon_plans.tres" id="n2"]
+[ext_resource type="Resource" path="res://data/meta/stockpile.tres" id="n3"]
+[ext_resource type="Resource" path="res://data/meta/extra_hands.tres" id="n4"]
+[ext_resource type="Resource" path="res://data/meta/sturdy_base.tres" id="n5"]
+[ext_resource type="Resource" path="res://data/meta/second_thoughts.tres" id="n6"]
+[ext_resource type="Resource" path="res://data/meta/relic_sense.tres" id="n7"]
+[ext_resource type="Resource" path="res://data/meta/wider_choice.tres" id="n8"]
+[ext_resource type="Resource" path="res://data/meta/whirl_schematics.tres" id="n9"]
+[ext_resource type="Resource" path="res://data/meta/wildfire_lore.tres" id="n10"]
+
+[resource]
+script = ExtResource("1_tree")
+nodes = Array[ExtResource("2_node")]([ExtResource("n0"), ExtResource("n1"), ExtResource("n2"), ExtResource("n3"), ExtResource("n4"), ExtResource("n5"), ExtResource("n6"), ExtResource("n7"), ExtResource("n8"), ExtResource("n9"), ExtResource("n10")])

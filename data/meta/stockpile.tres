@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="MetaNodeData" format=3]
+
+[ext_resource type="Script" path="res://progression/meta_node_data.gd" id="1_node"]
+
+[resource]
+script = ExtResource("1_node")
+id = "stockpile"
+display_name = "Stockpile"
+description = "+25 starting gold, per level."
+icon_path = "res://assets/ui/meta/stockpile.png"
+branch = 2
+position = Vector2(160, -70)
+links = PackedStringArray("hearth")
+costs = PackedInt32Array(2, 4, 6)
+start_resources = Dictionary[int, int]({0: 25})

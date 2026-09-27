@@ -14,13 +14,14 @@ extends RefCounted
 ##             player may take (not maxed, required tags owned). Weight =
 ##             rarity weight x (1 + SYNERGY per owned stack sharing a tag),
 ##             capped at MAX_SYNERGY. One reroll per level-up; skipping pays
-##             gold.
+##             gold. The relic tree (Stage 8) can add rerolls and cards, and
+##             keeps some augments out until bought (`locked`).
 ##   taking    a common's modifiers go in as the source "aug:<id>" scaled by
 ##             its stacks (like shop upgrade levels); a rare's `flag` switches
 ##             a rule on, read by the system it changes (has_flag).
 ##
-## Saved: xp, level, pending picks, stacks per augment, whether this pick's
-## reroll is spent, the rng. The current offer is drawn again after loading.
+## Saved: xp, level, pending picks, stacks per augment, rerolls left for this
+## pick, the rng. The current offer is drawn again after loading.
 
 signal xp_changed(xp: int, needed: int, level: int)
 ## A new offer is up (after a level-up, a reroll or a pick with more pending).
@@ -48,7 +49,13 @@ var level := 1
 ## Level-ups not yet picked.
 var pending := 0
 var offer := PackedStringArray()
-var reroll_used := false
+## Rerolls left for the current pick.
+var rerolls_left := 1
+## Per level-up; the relic tree adds to both (main.gd sets them per run).
+var rerolls_per_pick := 1
+var choices := CHOICES
+## Augment ids never offered in this run (locked in the relic tree).
+var locked := {}
 var _stacks := {}          # augment id -> stacks taken
 var _flags := {}           # flag -> true
 var _drip_ticks := 0
@@ -66,7 +73,7 @@ func reset(seed_value: int) -> void:
 	level = 1
 	pending = 0
 	offer = PackedStringArray()
-	reroll_used = false
+	rerolls_left = rerolls_per_pick
 	_stacks.clear()
 	_flags.clear()
 	_drip_ticks = 0
@@ -145,7 +152,7 @@ func owned_tags() -> Dictionary:
 
 
 func can_offer(a: AugmentData, tags: Dictionary) -> bool:
-	if a == null or stacks_of(a.id) >= a.max_stacks:
+	if a == null or stacks_of(a.id) >= a.max_stacks or locked.has(a.id):
 		return false
 	for t in a.requires_tags:
 		if int(tags.get(t, 0)) < int(a.requires_tags[t]):
@@ -160,7 +167,7 @@ func weight_of(a: AugmentData, tags: Dictionary) -> float:
 	return float(RARITY_WEIGHT.get(a.rarity, 1.0)) * minf(1.0 + SYNERGY * shared, MAX_SYNERGY)
 
 
-## Up to CHOICES different augments, by weight. Fewer if the pool runs dry.
+## Up to `choices` different augments, by weight. Fewer if the pool runs dry.
 func draw() -> PackedStringArray:
 	var tags := owned_tags()
 	var cands: Array[AugmentData] = []
@@ -170,7 +177,7 @@ func draw() -> PackedStringArray:
 			cands.append(a)
 			weights.append(weight_of(a, tags))
 	var out := PackedStringArray()
-	while out.size() < CHOICES and not cands.is_empty():
+	while out.size() < choices and not cands.is_empty():
 		var total := 0.0
 		for w in weights:
 			total += w
@@ -187,8 +194,9 @@ func draw() -> PackedStringArray:
 	return out
 
 
-func _new_offer() -> void:
-	reroll_used = false
+func _new_offer(keep_rerolls := false) -> void:
+	if not keep_rerolls:
+		rerolls_left = rerolls_per_pick
 	offer = draw()
 	if offer.is_empty():
 		# Everything is maxed: the levels still count, there is nothing to pick.
@@ -210,12 +218,17 @@ func take(id: String) -> bool:
 	return true
 
 
-## Draws three new cards, once per level-up. Returns false if already used.
+func can_reroll() -> bool:
+	return pending > 0 and rerolls_left > 0
+
+
+## Draws new cards, `rerolls_per_pick` times per level-up. Returns false if
+## none is left.
 func reroll() -> bool:
-	if pending <= 0 or reroll_used:
+	if not can_reroll():
 		return false
 	offer = draw()
-	reroll_used = true
+	rerolls_left -= 1
 	offer_ready.emit(offer)
 	return true
 
@@ -267,7 +280,7 @@ func resolve_source(source: String) -> Variant:
 
 func get_save_data() -> Dictionary:
 	return {"xp": xp, "level": level, "pending": pending, "stacks": _stacks.duplicate(),
-		"reroll_used": reroll_used, "drip": _drip_ticks, "tiles": _tiles, "rng_state": rng.state}
+		"rerolls_left": rerolls_left, "drip": _drip_ticks, "tiles": _tiles, "rng_state": rng.state}
 
 
 ## Call BEFORE modifiers load: their "aug:" sources are rebuilt from the
@@ -276,7 +289,11 @@ func load_save_data(data: Dictionary) -> void:
 	xp = int(data.get("xp", 0))
 	level = maxi(int(data.get("level", 1)), 1)
 	pending = maxi(int(data.get("pending", 0)), 0)
-	reroll_used = bool(data.get("reroll_used", false))
+	# Before Stage 8 a save said only whether the one reroll was used.
+	if data.has("rerolls_left"):
+		rerolls_left = maxi(int(data["rerolls_left"]), 0)
+	else:
+		rerolls_left = 0 if bool(data.get("reroll_used", false)) else rerolls_per_pick
 	_drip_ticks = int(data.get("drip", 0))
 	_tiles = int(data.get("tiles", 0))
 	_stacks.clear()
@@ -298,6 +315,4 @@ func load_save_data(data: Dictionary) -> void:
 ## After loading: brings the pick back up if one was pending.
 func resume_offer() -> void:
 	if pending > 0 and offer.is_empty():
-		var used := reroll_used
-		_new_offer()
-		reroll_used = used
+		_new_offer(true)   # the rerolls left were saved

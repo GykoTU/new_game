@@ -103,8 +103,10 @@ func _default_profile() -> Dictionary:
 		"total_ticks": 0,
 		# Stage 3b: the meta currency, found at points of interest.
 		"relics": 0,
-		# Meta-upgrades join this in Stage 8. New keys are filled in
-		# from these defaults on load, so adding one needs no migration step.
+		# Stage 8: the relic tree, {node id: level}. Relics spent on it are
+		# already taken out of "relics". New keys are filled in from these
+		# defaults on load, so adding one needs no migration step.
+		"meta": {},
 	}
 
 
