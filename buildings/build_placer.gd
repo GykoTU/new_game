@@ -14,6 +14,13 @@ signal tile_picked(cell: Vector2i)
 signal paint_started(cell: Vector2i)
 signal paint_moved(cell: Vector2i)
 signal placement_cancelled
+## Right-click strokes (tuned after Stage 10): cancel unbuilt things under the
+## mouse. In paint mode a right-click on something unbuilt starts one;
+## elsewhere it puts the tool away. `can_cancel` (cell -> bool) is set by main.
+signal cancel_started(cell: Vector2i)
+signal cancel_moved(cell: Vector2i)
+var can_cancel: Callable
+var _cancelling := false
 
 @export var level: LevelGenerator
 @export var valid_color := Color(0.6, 1.0, 0.6, 0.7)
@@ -76,6 +83,7 @@ func start(type: String, cancellable := true, construct := false) -> void:
 
 
 func stop() -> void:
+	_cancelling = false
 	_type = ""
 	_tile_mode = false
 	_paint_mode = false
@@ -135,6 +143,19 @@ func _unhandled_input(event: InputEvent) -> void:
 ## it, and the ghost stays in hand for the next one until the player cancels.
 func _paint_input(event: InputEvent) -> void:
 	_cell = level.world_to_cell(get_global_mouse_position())
+	if _cancelling:
+		if event.is_action_released("cancel_placement"):
+			_cancelling = false
+			get_viewport().set_input_as_handled()
+		elif event is InputEventMouseMotion:
+			cancel_moved.emit(_cell)
+			get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("cancel_placement") and can_cancel.is_valid() and can_cancel.call(_cell):
+		_cancelling = true
+		cancel_started.emit(_cell)
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("left_click"):
 		_painting = true
 		paint_started.emit(_cell)

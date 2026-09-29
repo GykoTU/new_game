@@ -51,7 +51,12 @@ func _on_level_generated() -> void:
 	# The level rebuilds its ground and building nodes on every new map: stay
 	# between them.
 	if get_parent() == _level and _level.buildings_root != null:
-		_level.move_child(self, _level.buildings_root.get_index())
+		# move_child takes the FINAL index: coming from in front of the
+		# buildings (a fresh map re-adds them after us), that is one less.
+		var target := _level.buildings_root.get_index()
+		if get_index() < target:
+			target -= 1
+		_level.move_child(self, target)
 	_mark_dirty()
 
 

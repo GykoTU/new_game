@@ -26,7 +26,7 @@ const R := ResourceKind.Id
 ## Stage 9: each gate pays with the rung before it. Gates are iron-bound;
 ## a bridge (to quartz) costs copper, a crossing (into the void) quartz.
 const PRICES := {
-	"wall": {R.WOOD: 2},
+	"wall": {R.IRON: 1},   # tuned after Stage 10: walls are iron
 	"gate": {R.WOOD: 4, R.IRON: 1},
 	"road": {R.WOOD: 1},
 	"bridge": {R.WOOD: 2, R.COPPER: 1},
@@ -108,7 +108,8 @@ func can_paint(tool: int, cell: Vector2i, gate := false) -> bool:
 	if not level.grid.in_bounds(cell) or not level.grid.is_explored(cell):
 		return false
 	if tool == Tool.WALL:
-		return planned_type(cell) != "" or level.can_place("gate" if gate else "wall", cell)
+		return planned_type(cell) != "" or level.can_place("gate" if gate else "wall", cell) \
+			or (gate and is_built_wall(cell))
 	if is_planned(tool, cell):
 		return true
 	var i := level.grid.index(cell)
@@ -125,16 +126,26 @@ func can_paint(tool: int, cell: Vector2i, gate := false) -> bool:
 	return false
 
 
+## A finished wall stands here (a gate stroke turns it into a gate).
+func is_built_wall(cell: Vector2i) -> bool:
+	if not level.grid.in_bounds(cell):
+		return false
+	var b := level.grid.get_occupant(cell)
+	return level.store.is_alive(b) and level.store.get_type(b) == "wall" and level.store.is_complete(b)
+
+
 ## Paints one tile. Returns "" on success, "skip" if there is nothing to do
 ## here, or why not ("Not enough resources for a gate."). A gate painted over
-## an unbuilt wall replaces it (the wall is refunded).
+## a wall replaces it, paying only the difference: an unbuilt wall is refunded,
+## a built one (since the tuning after Stage 10) is torn down for the gate.
 func paint(tool: int, cell: Vector2i, gate := false) -> String:
 	if not can_paint(tool, cell, gate) or is_planned(tool, cell, gate):
 		return "skip"
 	var key := ("gate" if gate else "wall") if tool == Tool.WALL else String(_NAME[overlay_of(tool)])
 	var price := price_of(key)
 	var swap := tool == Tool.WALL and gate and planned_type(cell) == "wall"
-	var credit := price_of("wall") if swap else {}
+	var rebuild := tool == Tool.WALL and gate and is_built_wall(cell)
+	var credit := price_of("wall") if swap or rebuild else {}
 	var need := {}
 	for k in price:
 		need[k] = maxi(int(price[k]) - int(credit.get(k, 0)), 0)
@@ -142,14 +153,39 @@ func paint(tool: int, cell: Vector2i, gate := false) -> String:
 		return "Not enough resources for a %s." % key
 	if swap:
 		unpaint(tool, cell)
+	if rebuild:
+		level.remove_building(cell)
 	if tool == Tool.WALL:
 		if level.place_construction(key, cell) == BuildingStore.NONE:
 			return "skip"
 	else:
 		_plans[level.grid.index(cell)] = [overlay_of(tool), 0.0]
 		plans_changed.emit()
-	economy.spend(price)
+	economy.spend(need if rebuild else price)
 	return ""
+
+
+## Right-click (tuned after Stage 10): cancels whatever unbuilt paint job is
+## on this tile -- a road, bridge or crossing plan, or an unbuilt wall or
+## gate -- with a full refund. True if something was cancelled.
+func cancel_at(cell: Vector2i) -> bool:
+	if not level.grid.in_bounds(cell):
+		return false
+	if planned_type(cell) != "":
+		return unpaint(Tool.WALL, cell)
+	var i := level.grid.index(cell)
+	if not _plans.has(i):
+		return false
+	var price := price_of(_NAME[int(_plans[i][0])])
+	_plans.erase(i)
+	plans_changed.emit()
+	for k in price:
+		economy.add(k, price[k])
+	return true
+
+
+func has_unbuilt(cell: Vector2i) -> bool:
+	return level.grid.in_bounds(cell) and (planned_type(cell) != "" or _plans.has(level.grid.index(cell)))
 
 
 ## Removes a plan of this tool at `cell` and refunds it. False if none.

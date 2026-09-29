@@ -762,8 +762,8 @@ marked tree to a placed, built building, and the timers in between.
   tree becomes a stump and `wood_per_tree` (3) wood drops bounce out.
   Carriers fetch them like mined resources. Unmarking mid-chop stops the
   builder; progress is kept.
-- **Timers.** A stump schedules its own removal (`stump_seconds`, 60). A
-  repeating regrow event (`regrow_seconds`, 45) grows one tree on a random
+- **Timers.** A stump schedules its own removal (`stump_seconds`, 20 since the tuning after Stage 10). A
+  repeating regrow event (`regrow_seconds`; replaced after Stage 10: each felled tree grows back 30 s after it fell, where it stood, or on the nearest free tile within 6 if something was built there, preferring tiles that touch no player building) grows one tree on a random
   free grass tile with nothing around it, while there are fewer trees than
   the map started with. Everything is in ticks and saved; regrowth spots come
   from the Forest's RNG, whose seed and state are saved too.
@@ -1295,8 +1295,8 @@ in `WorldGrid`, `FlowFields`, `EnemySystem`, `UnitSystem`, `JobBoard`,
   second instance of `item_bar.gd` with `tools = true`), each shown once its
   blueprint is known: walls and roads from the start, bridges and crossings
   findable (common, `Unlocks.EXTRA_FINDABLE`). Drag like the water bucket.
-  Each tile is paid at once (`BuildTools.PRICES`: wall 2 wood, gate 5, road
-  1, bridge 3, crossing 3 wood + 1 copper). Walls and gates become ordinary
+  Each tile is paid at once (`BuildTools.PRICES`; since the tuning after Stage 10: wall 1 iron, gate 4 wood + 1 iron, road
+  1 wood, bridge 2 wood + 1 copper, crossing 2 wood + 1 quartz). Walls and gates become ordinary
   construction sites (BUILD jobs); roads, bridges and crossings are plans in
   `BuildTools` (PAVE jobs, after DIG) that builders turn into overlay. A
   stroke that starts on an unbuilt plan unpaints, refunding in full; Shift
@@ -1428,6 +1428,117 @@ Files: `economy/resource_kind.gd`, `Level/level_generator.gd`,
   tower: level 2 early on day 4, level 3 during day 5 (Stage 7 gave about
   1.6 levels a day).
 
+### Tuning after Stage 10
+
+- **Builders repair only by day.** `UnitSystem.repair_at_night` (false)
+  brings night repairs back; it is meant to become a city hall priority.
+- **Workers walk through the player's buildings** (replacing the builders-
+  over-walls grid). `UnitPathing.walk_buildings`: any tile of a building
+  with BuildingData (houses, depots, weapons, walls, gates, sites) is
+  walkable at twice its ground's cost, so nothing the player builds can shut
+  a worker in; mines and trees stay solid; enemies are unaffected.
+  `builder_pathing` is now the same object as `pathing`.
+- **Right-click takes back what is unbuilt.** `main._can_cancel_cell` /
+  `_cancel_cell`: road, bridge and crossing plans and unbuilt walls and gates
+  are refunded (`BuildTools.cancel_at`); a construction site goes back to the
+  building bar (its progress is lost). Right-drag cancels along a line. With
+  a paint tool in hand, `BuildPlacer` starts the stroke (`can_cancel`,
+  `cancel_started`, `cancel_moved`); a right-click on nothing puts the tool
+  away as before.
+- **Walls to gates, weapons on walls, building on stumps.** A gate stroke
+  over a finished wall tears it down and places a gate site, paying the
+  difference (`BuildTools.is_built_wall`). `LevelGenerator._cleared_for`: a
+  tree stump gives way to any building, a finished wall to a weapon
+  (`_clear_footprint` removes them when placing).
+- **Notifications** (`UI/notifications.gd`, top right under the resource
+  bar): everything the explorer finds (`main._on_poi_opened`), with the
+  cache or relic icon, until clicked; at most 6 shown, the rest wait.
+- **Start lakes:** `_place_start_lakes` puts two small lakes (no mine) in the
+  valley, one inside the clearing and one just beyond, so the bucket always
+  has water. Every hazard region is also guaranteed a cache now.
+- **Longer days:** `RunDirector.day_seconds` 180 (was 120).
+- **Luck with memory** (`global/marble_bag.gd`, `global/luck.gd`). A
+  `MarbleBag` draws without replacement and refills; `Luck` keeps one bag
+  per key: `chance(key, p)` (round(p x n) hits in every n draws, n = 20 or
+  1/p up to 100) and `pick_range(key, lo, hi)`. Used for blueprint drops
+  (per enemy kind), rare-or-common finds, and relics per cache. Saved as
+  `luck`; reset from the seed on a new run.
+- **Caches do not block** (`LevelGenerator.WALK_OVER`): blueprint, relic and
+  dropped caches claim their tile without BLOCKS_UNIT, and the enemy flow
+  fields give them their ground's cost.
+- **Trees grow back where they fell** (`Forest`), walls cost 1 iron. A tree
+  never grows within one tile of a player building or a mine (walls, trees
+  and stumps excepted; roads are no building): it moves to the nearest tile
+  where it may, within `regrow_search` (8), or is lost.
+- **Mines drop within one tile** (`UnitSystem._pop_drop_at`, `reach` 1 for
+  mines; felled trees still scatter within 2).
+
+### Terrain: regions, caves and the snowstorm (implemented, Stage 10)
+
+**Diagram: [`docs/regions.svg`](docs/regions.svg)** — the chain of regions,
+where nights come from, and what the storm hides.
+
+Files: `Level/level_generator.gd` (regions), `Level/world_grid.gd`,
+`Level/snow_storm.gd` (`SnowStorm`), `Level/storm_renderer.gd`,
+`Level/watchtowers.gd` (`Watchtowers`), `Level/watch_cones.gd`; changes in
+`Waves`, `EnemySystem`, `EnemyRenderer`, `BaseDefence`, `WeaponSystem`,
+`UnitSystem`, `PointsOfInterest`, `main.gd`; building data now allows snow.
+
+- **Grounds.** `Ground.ICE` became `SNOW` (same number, so saves keep it);
+  `MOUNTAIN` was appended: blocks units and shots, impassable, casts sight
+  shadows; fliers cross it. Snow is walkable at `COST_SNOW` (17) and slows
+  everyone to `SNOW_SPEED` (0.6x: `UnitSystem._ground_speed`, EnemySystem's
+  move step). `WorldGrid.region` (a byte per tile, `NO_REGION` = 255) says
+  which region a tile is in; saved compressed with the level, with
+  `LevelGenerator.regions` (kind, main, parent, center, radius, gated).
+- **Sight.** `WorldGrid.reveal_circle` only explores tiles the centre
+  `sees` (Bresenham; the first mountain on a line is seen, nothing behind
+  it). `visible_disc` gives the same set without exploring (live sight).
+- **The map (160x120).** `generate()` fills the map with mountain and
+  draws a layout: the main chain valley -> lava -> lakes -> snowfield ->
+  void as a winding walk of region centres (`_try_layout`, up to 200 cheap
+  tries), side valleys off the main regions (`side_valley_chance`). Regions
+  are noisy discs kept clear of each other's furthest reach
+  (`REGION_REACH`), so a ridge always stands between them. Passes are
+  corridors between centres; across the ridge part of the pass into a
+  gated region sits a band (`gate_band`, 3 tiles) of its hazard: lava for
+  the lava fields, water for the lakes, void for the void; the snowfield's
+  pass is open. Gated side valleys (`side_gate_chance`) get their parent's
+  hazard. Ridge tiles belong to the region on their side of the band.
+  Inside: hazard patches (lava 3-5, lakes 2-4, void 2-3) away from the
+  passes, the first with a mine and a region cache; the snowfield's
+  diamonds and caches lie on the snow; each side valley holds a cache or
+  relics and maybe a mine; the start valley holds the clearing, gold and
+  iron. `_chain_sealed()` flood-fills the bare ground (8-way) and redraws
+  the whole map if any gated region leaks. About 200 ms per map.
+- **Caves** (`cave`, a generated building on a rim mountain tile, 2 in the
+  valley and 1-2 per main region). `Waves` spawns from caves when a map has
+  them: walkers from caves whose exit the base can reach on the ground
+  (`reachable_from`: overlays count, buildings do not), fliers from any cave
+  within `FLIER_RANGE` (60) tiles. 1 cave, 2 from night 3, 3 from night 6;
+  the toast names their compass sides. A queue entry's source is the cave's
+  tile index (`from_caves`, saved). Maps without caves use the edges.
+- **Region tiers.** `LevelGenerator.region_tier(cell)` (valley 1, lava 2,
+  lakes 3, snow and void 4) is what a cache holds; older maps fall back to
+  the ground (`REGION_TIER`).
+- **The snowstorm** (`SnowStorm`). `storm` (a byte per tile, 255 =
+  covered) is rebuilt every 6 ticks (step 4 of `_simulate`): every snow tile
+  covered, then cleared around finished player buildings near snow (3
+  tiles), workers in or near snow (3; the explorer 4) and watchtower cones,
+  all with mountain shadows. `EnemySystem.is_targetable` (alive and not on a
+  covered tile) is what every weapon, chain, split and the base's zap now
+  test; `EnemyRenderer` skips hidden enemies. `StormRenderer` draws it like
+  the fog (one L8 texture, a drifting-haze shader, `snowstorm.png` if it
+  exists), just under the fog. A map without snow costs nothing.
+- **Watchtowers** (`Watchtowers`). A finished tower sees a cone
+  (`CONE_LENGTH` 14 tiles, `CONE_HALF` 25 degrees, mountain shadows) that
+  explores what it covers and clears the storm. After placing one, main
+  asks for a click to aim it (`_start_aiming`, preview by `WatchCones`);
+  clicking a built tower re-aims it; cancelling keeps the default (away from
+  the base). Saved as `watchtowers` ({"x,y": angle}), loaded after the level.
+- **Measured** (seed 42, every gate opened, 400 enemies from 9 caves): 1.6
+  ms per tick on average, 5.8 ms worst.
+
 ### Relic tree: meta progression (implemented, Stage 8)
 
 **Diagram: [`docs/relic-tree.svg`](docs/relic-tree.svg)** — where relics come
@@ -1529,7 +1640,7 @@ one key in `main.gd.save_run()`, never touching the autoload.
 
     level, clock, economy, roster, shop, modifiers, units,
     unlocks, inventory, forest, lava, director, poi, enemies, waves, weapons,
-    demolition, build_tools, progression, meta
+    demolition, build_tools, progression, meta, watchtowers, luck
 
 Load order is load-bearing: **meta first** (the run's relic-tree snapshot:
 its perks and locks shape the loads below, and its modifier sources rebuild

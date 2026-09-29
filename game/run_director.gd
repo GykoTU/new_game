@@ -16,7 +16,7 @@ signal phase_changed(is_night: bool, day: int)
 signal day_started(day: int)
 
 ## Seconds of simulation time, at speed 1.
-var day_seconds := 120.0
+var day_seconds := 180.0   # 120 until the tuning after Stage 10 (+50%)
 var night_seconds := 60.0
 ## How long the light takes to change at dusk and dawn.
 var twilight_seconds := 6.0

@@ -89,11 +89,15 @@ First loop the player can actually watch happen.
       builders chop marked trees only (priority below build and repair)
 - [x] Chopped tree leaves a stump and 3 wood drops (carriers fetch them); the
       stump disappears after 60 s; trees regrow every 45 s up to the start count
+      (tuned after Stage 10: stumps rot in 20 s; each felled tree grows back
+      where it stood 30 s after it fell, or next door if built over)
 - [x] Shop split into Buy (gold) and Craft (resources) tabs; Better Pickaxes
       lost its copper cost
 - [x] Blueprints: crafting needs one; unknown items are hidden; the run starts
       knowing bucket, depot, builder house and carrier house
-- [x] Craftable houses: builder house, carrier house (10 wood each); miner
+- [x] Craftable houses: builder house, carrier house (10 wood each;
+      tuned after Stage 10: builder house 6 wood + 2 iron, carrier house 6 wood,
+      explorer house 8 wood, depot 10 wood + 3 iron; walls 1 iron instead of wood); miner
       home paid on assignment, 5 wood
 - [x] Building inventory and bar: one slot per type with a count, first-crafted
       order; always 5 slots on the left; hover + Shift opens more columns to
@@ -304,14 +308,67 @@ Each stage gets its own design questions and art list before it is built.
       rarity grows with distance; drops never beyond the reached tier
 - [x] Slow XP down (about one pick every two days)
 - [ ] Playtest: prices, ring distances, how many region caches, XP pace
+- Known drawbacks, to revisit (noted at the end of Stage 9):
+  - [ ] Tier 1 has too few findable blueprints (boots, arrow pierce; the
+        pickaxe is known from the start), so the grass caches soon give
+        relics. Add early tech or place fewer grass caches.
+  - [ ] Tier 4 has only three findable blueprints (city hall, flame
+        cinders, frost chain) while a map has several ice and void caches;
+        the rest fall back to lower tiers, so a far void cache may teach
+        mid-tier tech.
+  - [ ] About 6-8 region caches plus 2 grass caches per map against about
+        40 findable blueprints: tech may run out fast and finds feel cheap.
+  - [ ] Frost moved from diamond to quartz (mid-game), so the frost
+        augments (Frostbite, Shatter) enter builds earlier.
+  - [ ] Iron may go idle mid-game once the pickaxe is maxed (only gates and
+        arrow upgrades use it). Stage 12's building expansions could use it.
+  - [ ] Runs saved before Stage 9 keep their old map (gold in lava, no iron
+        mine) and cannot pay for gates: start a new run.
 
 ### Stage 10 — Terrain
-- [ ] Larger map; mountains (impassable) splitting it into a chain of regions
-      with gated passes
-- [ ] Ice becomes a snowfield: thicker fog, slower movement
-- [ ] In the snow, weapons fire only at close enemies or inside a
-      watchtower's aimed vision cone
-- [ ] Performance check on the larger map
+- [x] 160x120 map; mountains (impassable, casting sight shadows) splitting
+      it into a branching chain of regions with gated passes
+- [x] Caves in each region: nights come from the caves the base is joined
+      to; fliers from any cave within 60 tiles
+- [x] Ice becomes a snowfield: a storm that re-covers what nothing sees,
+      slower movement (0.6x)
+- [x] In the snow, weapons fire only at enemies near the player's buildings
+      and workers or inside a watchtower's aimed cone
+- [x] Performance check on the larger map (1.6 ms a tick with 400 enemies)
+- [ ] Playtest: region sizes and shapes, ridge width, patch counts, cave
+      counts, storm sight radii, cone size
+- Known drawbacks, to revisit (noted at the end of Stage 10):
+  - [ ] Regions are still fairly round blobs; more varied shapes (lobes,
+        narrow valleys) would feel less generated
+  - [ ] The drawn cone ignores mountain shadows (the tiles it clears do not)
+  - [ ] Walks are long on the bigger map: carriers need depots and roads
+        more, which may slow the early game
+  - [ ] The snowfield has little wood (few trees on snow)
+  - [ ] Runs saved before Stage 10 keep their old map: no caves (nights
+        from the edges), and their ice patches become snowstorm
+- Fixed after Stage 10:
+  - [x] Roads were drawn over buildings after a new map or a load (the
+        overlay renderer moved itself one slot too far), hiding a dropped
+        blueprint cache lying on a road
+  - [x] Caches (blueprint, relic, dropped) no longer block anyone: workers
+        and enemies walk over them; nothing can be built or painted on them
+  - [x] Builders repair only by day (night repairs become a city hall option)
+  - [x] Builders walk over walls and gates (their own pathing grid), so
+        units boxed in by walls can be freed with the shovel
+  - [x] Trees never grow beside a building or a mine (walls and roads fine)
+  - [x] Mines drop only within one tile
+  - [x] Right-click (and right-drag) takes back unbuilt roads, walls,
+        bridges, crossings and building sites
+  - [x] Workers walk through the player's own buildings
+  - [x] Built walls can be turned into gates; weapons can be built on walls;
+        buildings can be placed on stumps
+  - [x] Notifications for exploration finds, top right, until clicked
+  - [x] Two small lakes by the start (water for the bucket)
+  - [x] Days last 180 s (was 120)
+  - [x] Luck with memory (marble bags) for drops, rare finds and relics
+  - [ ] Watch: a mine with no free walkable tile beside it (e.g. in a lava
+        patch with only the miner house's tile cobbled) stalls silently.
+        A hint ("cobble a tile next to this mine") may be needed
 
 ### Stage 11 — Threat
 - [ ] Gentler nightly curve
@@ -331,6 +388,8 @@ Each stage gets its own design questions and art list before it is built.
 
 ## Later — noted so they are not lost
 
+- [ ] City hall priority: repair at night (`UnitSystem.repair_at_night`,
+      off by default since the tuning after Stage 10)
 - [ ] City hall (found as a blueprint): player-set task priorities for a
       number of builders, miners and carriers, unlocking more control over a
       run (like Palworld's monitoring stand). Replaces "assignable builder
@@ -410,6 +469,15 @@ Full paths, 32x32 unless stated. Ticked = the file exists.
       enemies; without it, three circling dots
 - [ ] `assets/ui/tab_weapons.png`, `assets/ui/tab_workers.png`,
       `assets/ui/tab_utility.png` — optional 16x16 icons for the sub-tabs
+
+**10** (all have stand-ins)
+- [ ] `assets/ground/ground_mountain.png` — 32x32 rock; without it, a drawn
+      dark-rock tile
+- [ ] `assets/ground/mountain_sheet.png` — optional 512x32, 16 frames, frame =
+      neighbours that are mountain (N=1 E=2 S=4 W=8)
+- [ ] `assets/ground/ground_snow.png` — 32x32; without it, `ground_ice.png`
+- [ ] `assets/effects/snowstorm.png` — optional tileable 64x64 drift texture
+- [ ] `assets/buildings/cave.png` — 32x32 cave mouth; without it, a dark arch
 
 **9** (all have stand-ins)
 - [ ] `assets/buildings/mines/mine_iron.png` — 32x32; without it, the gold

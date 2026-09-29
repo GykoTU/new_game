@@ -13,6 +13,7 @@ section = 1
 blueprint = "blueprint:depot"
 tags = PackedStringArray("depot")
 base_cost = Dictionary[int, int]({
-5: 15
+5: 10,
+6: 3
 })
 building_id = "depot"

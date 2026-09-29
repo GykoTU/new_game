@@ -32,7 +32,7 @@ const ITEMS := [
 const TOOLS := [
 	[
 		["blueprint:wall", "Walls", "res://assets/ui/tool_wall.png",
-			"Drag to paint walls (2 wood each); hold Shift for gates (4 wood and 1 iron). Start on an unbuilt one to take it back.",
+			"Drag to paint walls (1 iron each); hold Shift for gates (4 wood and 1 iron). Start on an unbuilt one to take it back.",
 			"res://assets/buildings/walls/wall.png"],
 	],
 	[

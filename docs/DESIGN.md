@@ -15,7 +15,7 @@ Wood, gold, iron, copper, quartz, diamond (and fruit, unused). Since Stage 9
 they form a ladder; see **Cohesion pass** above. Gold and iron are mined in
 the start valley, copper in lava, quartz in water, diamonds on ice.
 
-## Cohesion pass (decided; Stage 9 built)
+## Cohesion pass (decided; Stages 9-10 built)
 
 Stages 0-8 laid the mechanical foundation. The cohesion pass turns it into one
 game: the map leads the player up a resource ladder, nights push them to
@@ -53,12 +53,24 @@ older sections where they disagree; those are updated as each part is built.
   snowfield -> void. The way on always crosses the next biome, so the map
   itself leads the player up the ladder. Side pockets hold caches.
 - The fog of war stays central: the world should feel explored, not roamed.
+  **Mountains cast shadows**: you see a ridge, not what lies behind it.
+- **Luck has memory** (decided after Stage 10): blueprint drops, rare finds
+  and relic amounts come from marble bags, so a streak of bad luck always
+  ends within one bagful.
+- **Built in Stage 10:** a 160x120 map; the main chain valley -> lava
+  fields -> lakes -> snowfield -> void, one pass each (lava, water, open,
+  void); side valleys branch off, about half behind their parent's hazard.
+  Enemies come out of **caves** in the regions' rock rims: at first only the
+  valley's, and every region you open joins its caves to the night. Fliers
+  come from any cave within reach, over the ridges.
 - **The ice biome becomes a snowfield**: a permanent snowstorm with a
   **thicker fog** (units see much less) and **slower movement**. Inside it,
   weapons can only fire at enemies **close to the weapon** or inside a
   **watchtower's vision cone**. A watchtower in the snow casts a **long cone**
-  the player **aims** when placing it (and can re-aim from its panel). That
-  is the watchtower's real purpose.
+  the player **aims** with a click after placing it (click the tower again
+  to re-aim). That is the watchtower's real purpose. Snow tiles nothing sees
+  right now fall back into the storm, hiding terrain, mines, caches and
+  enemies; enemies there cannot be shot by any weapon, wherever it stands.
 
 ### Blueprints follow the map
 
@@ -169,7 +181,7 @@ crossings** (which cost copper, to quartz), both findable blueprints.
 | Unit | Bought with | Does |
 |---|---|---|
 | Miner | gold | Sent to a mine that has a miner house with a free bed; gathers while stationed in it. |
-| Builder | gold | Builds, repairs, chops wood, fetches water for cobble. Never carries resources. |
+| Builder | gold | Builds, repairs (by day), chops wood, fetches water for cobble. Never carries resources. **Walks over walls and gates**, so a boxed-in builder can always get out and dig a misplaced wall away. |
 | Carrier | gold | The only unit that carries resources: picks them up and brings them home (base, later a depot). |
 | Explorer | gold | Sent out to explore the map. *(new, not yet designed in detail)* |
 
@@ -246,9 +258,11 @@ Sales work in both sections (a SHOP_PRICE modifier, already built).
 - **The world darkens at night**, easing in at dusk and out at dawn. The UI
   does not darken. Finished player buildings carry a **faint warm glow** so
   they stay readable in the dark; trees and mines do not.
-- **At night everyone goes home** — except **builders, who still repair**.
-  Repairing means leaving the house while enemies are out, which is the point:
-  it is a risk the player chooses to take. Carriers leave dropped resources
+- **At night everyone goes home, builders too** (since the tuning after
+  Stage 10: repairs are day work). Repairing at night will be a **city hall
+  priority** the player can switch on. Repairing at night means leaving the
+  house while enemies are out, which is the point: it is a risk the player
+  chooses to take. Carriers leave dropped resources
   where they lie until morning, and **mines stand idle** — a miner sent to a
   mine after dusk moves in and sleeps, and produces nothing until dawn.
 - **Waves come at night** and get stronger with the day number (Stage 4).

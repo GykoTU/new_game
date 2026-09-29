@@ -13,7 +13,8 @@ extends RefCounted
 ## APPEND-ONLY (D8): saves store one byte per tile, and BuildingData's
 ## allowed_grounds is one bit per entry.
 ## APPEND-ONLY (D8): saves store these numbers per tile.
-enum Ground { GRASS_1, GRASS_2, GRASS_3, FLOWERS, ICE, LAVA, WATER, SAND, VOID, COBBLE }
+## Stage 10: ICE became SNOW (same number), MOUNTAIN was appended.
+enum Ground { GRASS_1, GRASS_2, GRASS_3, FLOWERS, SNOW, LAVA, WATER, SAND, VOID, COBBLE, MOUNTAIN }
 
 ## Tiles whose ground or occupancy changed at runtime. Pathing, and later fog
 ## of war and enemy flow fields, update only these instead of rescanning the
@@ -43,6 +44,14 @@ const COST_ROUGH := 14
 ## weighs a road tile at COST_OPEN / ROAD_SPEED.
 const COST_ROAD := 6
 const ROAD_SPEED := 1.6
+## Snow (Stage 10): everyone walks SNOW_SPEED times as fast in it, and
+## pathing weighs it at COST_OPEN / SNOW_SPEED.
+const SNOW_SPEED := 0.6
+const COST_SNOW := 17
+
+## Region layer (Stage 10): which region of the map a tile belongs to (an
+## index into LevelGenerator.regions), or NO_REGION for mountains.
+const NO_REGION := 255
 
 ## What is built on top of the ground (Stage 6). One per tile. Enemies ignore
 ## roads; bridges and crossings make water and void walkable for everyone.
@@ -57,11 +66,14 @@ const GROUND_BLOCKING := {
 	Ground.GRASS_3: 0,
 	Ground.FLOWERS: 0,
 	Ground.SAND: 0,
-	Ground.ICE: 0,
+	Ground.SNOW: 0,
 	Ground.LAVA: BLOCKS_UNIT,
 	Ground.WATER: BLOCKS_UNIT,
 	Ground.VOID: BLOCKS_UNIT,
 	Ground.COBBLE: 0,
+	# Stage 10: nothing walks through a mountain and no shot passes it; it
+	# also casts a shadow for sight (reveal_circle). Fliers cross it.
+	Ground.MOUNTAIN: BLOCKS_UNIT | BLOCKS_PROJECTILE,
 }
 
 const GROUND_COST := {
@@ -70,11 +82,12 @@ const GROUND_COST := {
 	Ground.GRASS_3: COST_OPEN,
 	Ground.FLOWERS: COST_OPEN,
 	Ground.SAND: COST_ROUGH,
-	Ground.ICE: COST_ROUGH,
+	Ground.SNOW: COST_SNOW,
 	Ground.LAVA: COST_IMPASSABLE,
 	Ground.WATER: COST_IMPASSABLE,
 	Ground.VOID: COST_IMPASSABLE,
 	Ground.COBBLE: COST_OPEN,   # cooled lava: made by builders, walkable
+	Ground.MOUNTAIN: COST_IMPASSABLE,
 }
 
 var size := Vector2i.ZERO
@@ -97,6 +110,8 @@ var cost := PackedByteArray()
 var explored := PackedByteArray()
 ## Overlay per tile (Overlay enum). Saved with the level.
 var overlay := PackedByteArray()
+## Region per tile (Stage 10), or NO_REGION. Saved with the level.
+var region := PackedByteArray()
 
 ## The occupant's own contribution, stored rather than recomputed so that
 ## changing terrain under a building, or a building over terrain, gives the same
@@ -127,6 +142,7 @@ func resize(map_size: Vector2i) -> void:
 	_occupant_cost.resize(n); _occupant_cost.fill(0)
 	explored.resize(n); explored.fill(EXPLORED)
 	overlay.resize(n); overlay.fill(Overlay.NONE)
+	region.resize(n); region.fill(NO_REGION)
 
 
 func tile_count() -> int:
@@ -245,9 +261,12 @@ func is_explored_at(i: int) -> bool:
 	return explored[i] != UNEXPLORED
 
 
-## Explores every tile within `radius` of `center` (a disc, not a square).
-## Returns the indices that were unexplored until now -- empty when the disc
-## was already known, which is the common case for a unit walking home.
+## Explores every tile within `radius` of `center` (a disc, not a square)
+## that `center` can see: since Stage 10 mountains cast shadows, so a tile is
+## only explored if the line to it crosses no mountain (the first mountain
+## on the line is seen). Returns the indices that were unexplored until now
+## -- empty when the disc was already known, the common case for a unit
+## walking home, which then costs no line tests at all.
 func reveal_circle(center: Vector2i, radius: int) -> PackedInt32Array:
 	var fresh := PackedInt32Array()
 	var r2 := radius * radius + radius   # the +radius rounds the rim off nicely
@@ -259,10 +278,53 @@ func reveal_circle(center: Vector2i, radius: int) -> PackedInt32Array:
 			if dx * dx + dy * dy > r2:
 				continue
 			var i := row + x
-			if explored[i] == UNEXPLORED:
+			if explored[i] == UNEXPLORED and sees(center, Vector2i(x, y)):
 				explored[i] = EXPLORED
 				fresh.append(i)
 	return fresh
+
+
+## Every tile within `radius` that `center` can see (mountain shadows), as
+## indices. For live sight (the snowstorm) and watchtower cones.
+func visible_disc(center: Vector2i, radius: int) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	var r2 := radius * radius + radius
+	for y in range(maxi(center.y - radius, 0), mini(center.y + radius, size.y - 1) + 1):
+		var dy := y - center.y
+		for x in range(maxi(center.x - radius, 0), mini(center.x + radius, size.x - 1) + 1):
+			var dx := x - center.x
+			if dx * dx + dy * dy <= r2 and sees(center, Vector2i(x, y)):
+				out.append(y * size.x + x)
+	return out
+
+
+## True if nothing but the target itself may be a mountain on the line from
+## `a` to `b` (Bresenham; the viewer's own tile never blocks).
+func sees(a: Vector2i, b: Vector2i) -> bool:
+	var dx := absi(b.x - a.x)
+	var dy := -absi(b.y - a.y)
+	var sx := 1 if a.x < b.x else -1
+	var sy := 1 if a.y < b.y else -1
+	var err := dx + dy
+	var x := a.x
+	var y := a.y
+	while true:
+		if x == b.x and y == b.y:
+			return true
+		if (x != a.x or y != a.y) and ground[y * size.x + x] == Ground.MOUNTAIN:
+			return false
+		var e2 := 2 * err
+		if e2 >= dy:
+			err += dy
+			x += sx
+		if e2 <= dx:
+			err += dx
+			y += sy
+	return true
+
+
+func region_of(cell: Vector2i) -> int:
+	return region[cell.y * size.x + cell.x]
 
 
 # --- Derivation ---------------------------------------------------------------

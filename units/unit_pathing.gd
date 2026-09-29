@@ -10,6 +10,16 @@ extends RefCounted
 
 var astar := AStarGrid2D.new()
 var _grid: WorldGrid
+## Workers walk through the player's own buildings (tuned after Stage 10):
+## houses, depots, weapons, walls and gates, finished or not. Nothing the
+## player builds can shut a worker in. Mines, trees and the like stay solid,
+## and enemies are not affected (they use flow fields). Crossing a building
+## costs BUILDING_COST_SCALE times the ground under it, so workers still walk
+## round buildings when the way round is short. Needs `level` to tell the
+## player's buildings from the rest.
+var walk_buildings := false
+var level: LevelGenerator
+const BUILDING_COST_SCALE := 2.0
 
 
 func rebuild(grid: WorldGrid) -> void:
@@ -34,11 +44,25 @@ func _on_tiles_changed(indices: PackedInt32Array) -> void:
 
 func _apply(i: int) -> void:
 	var cell := _grid.cell_at(i)
+	if walk_buildings and _on_own_building(i):
+		# The ground under the building decides (none stands on water).
+		var ground_ok := (_grid.ground_blocking_at(i) & WorldGrid.BLOCKS_UNIT) == 0
+		astar.set_point_solid(cell, not ground_ok)
+		if ground_ok:
+			astar.set_point_weight_scale(cell,
+				float(_grid.ground_cost_at(i)) / WorldGrid.COST_OPEN * BUILDING_COST_SCALE)
+		return
 	if not _grid.is_passable_at(i):
 		astar.set_point_solid(cell, true)
 		return
 	astar.set_point_solid(cell, false)
 	astar.set_point_weight_scale(cell, float(_grid.get_cost_at(i)) / WorldGrid.COST_OPEN)
+
+
+func _on_own_building(i: int) -> bool:
+	var occ := _grid.occupancy[i]
+	return occ != WorldGrid.NO_OCCUPANT and level != null and level.store.is_alive(occ) \
+		and level.get_building_data(level.store.get_type(occ)) != null
 
 
 ## Cells from `from` to `to`, both included. Empty if unreachable.

@@ -226,7 +226,7 @@ func nearest_enemy(at: Vector2, r: float, skip1 := NONE, skip2 := NONE) -> int:
 	var best := NONE
 	var best_d := r * r
 	for e in enemies.nearby.query(at, r):
-		if e == skip1 or e == skip2 or not enemies.is_alive(e):
+		if e == skip1 or e == skip2 or not enemies.is_targetable(e):
 			continue
 		var d := enemies.pos[e].distance_squared_to(at)
 		if d <= best_d:
@@ -239,7 +239,7 @@ func nearest_enemy_not_in(at: Vector2, r: float, skip: PackedInt32Array) -> int:
 	var best := NONE
 	var best_d := r * r
 	for e in enemies.nearby.query(at, r):
-		if not enemies.is_alive(e) or skip.has(e):
+		if not enemies.is_targetable(e) or skip.has(e):
 			continue
 		var d := enemies.pos[e].distance_squared_to(at)
 		if d <= best_d:
@@ -450,7 +450,7 @@ func _pick_target(i: int, t: int) -> int:
 	var best := NONE
 	var best_v := INF
 	for e in enemies.nearby.query(at, r):
-		if not enemies.is_alive(e):
+		if not enemies.is_targetable(e):   # alive, and not hidden by the storm
 			continue
 		var d := enemies.pos[e].distance_squared_to(at)
 		if d > r * r:

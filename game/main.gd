@@ -125,6 +125,17 @@ var progression := Progression.new()
 var building_stats := BuildingStats.new()
 var level_up
 var xp_bar
+## What exploring found, top right, until clicked (tuned after Stage 10).
+var notifications
+## Rolls with memory: blueprint drops, rare finds, relics (tuned after Stage 10).
+var luck := Luck.new()
+## Stage 10: the snowstorm, and where each watchtower looks.
+var storm := SnowStorm.new()
+var watchtowers := Watchtowers.new()
+var storm_renderer: StormRenderer
+var watch_cones: WatchCones
+## The watchtower being aimed (building id), or -1: the next click sets it.
+var _aiming_tower := -1
 ## Stage 8: the relic tree as it was when this run started.
 var meta: MetaState
 ## False for a run saved before Stage 8: nothing is locked for it.
@@ -169,6 +180,9 @@ var _grants_this_hold := 0
 ## Painting lava marks with the water bucket in hand (see _on_paint_started).
 var _paint_on := true
 var _paint_last := Vector2i(-1, -1)
+## A right-click stroke cancelling unbuilt things (tuned after Stage 10).
+var _cancel_drag := false
+var _cancel_last := Vector2i(-1, -1)
 
 
 func _ready() -> void:
@@ -188,11 +202,18 @@ func _ready() -> void:
 	lava.setup(level, unlocks)
 	units.lava = lava
 	fog.setup(level)
+	watchtowers.setup(level, fog)
+	storm.setup(level, units.store)
+	storm.watchtowers = watchtowers
 	pois.setup(level, unlocks, fog)
 	units.pois = pois
 	pois.spotted.connect(_on_poi_spotted)
 	pois.opened.connect(_on_poi_opened)
 	enemies.setup(level, units, unlocks, enemy_kinds)
+	enemies.storm = storm
+	enemies.luck = luck
+	unlocks.luck = luck
+	pois.luck = luck
 	waves.setup(enemies, level)
 	defence.setup(level, enemies, modifiers)
 	weapons.setup(level, enemies, units, unlocks, modifiers)
@@ -231,6 +252,7 @@ func _ready() -> void:
 	tool_bar.item_pressed.connect(_on_item_pressed)
 	build_tools.setup(level, economy)
 	units.tools = build_tools
+	forest.tools = build_tools
 	wall_tiles.bind(level)
 	overlay_renderer = OverlayRenderer.new()
 	overlay_renderer.name = "Overlays"
@@ -244,6 +266,9 @@ func _ready() -> void:
 	run_summary.name = "RunSummary"
 	_add_ui(run_summary)
 	run_summary.return_pressed.connect(_return_to_title)
+	notifications = preload("res://UI/notifications.gd").new()
+	notifications.name = "Notifications"
+	_add_ui(notifications)
 	xp_bar = preload("res://UI/xp_bar.gd").new()
 	xp_bar.name = "XpBar"
 	_add_ui(xp_bar)
@@ -287,6 +312,17 @@ func _ready() -> void:
 	add_child(fog_renderer)
 	move_child(fog_renderer, build_placer.get_index())
 	fog_renderer.bind(level, fog)
+	# The storm just under the fog; the watchtower cones over both.
+	storm_renderer = StormRenderer.new()
+	storm_renderer.name = "Snowstorm"
+	add_child(storm_renderer)
+	move_child(storm_renderer, fog_renderer.get_index())
+	storm_renderer.bind(level, storm)
+	watch_cones = WatchCones.new()
+	watch_cones.name = "WatchCones"
+	add_child(watch_cones)
+	move_child(watch_cones, fog_renderer.get_index() + 1)
+	watch_cones.bind(level, watchtowers)
 	# Enemies and their effects with the units (z 1), so the fog hides them.
 	enemy_renderer = EnemyRenderer.new()
 	enemy_renderer.name = "EnemyRenderer"
@@ -323,6 +359,9 @@ func _ready() -> void:
 	build_placer.tile_picked.connect(_on_tile_picked)
 	build_placer.paint_started.connect(_on_paint_started)
 	build_placer.paint_moved.connect(_on_paint_moved)
+	build_placer.can_cancel = _can_cancel_cell
+	build_placer.cancel_started.connect(_on_cancel_started)
+	build_placer.cancel_moved.connect(_on_cancel_moved)
 	shop.purchase_check = _purchase_check
 	shop.unlocks = unlocks
 	shop.inventory = inventory
@@ -376,6 +415,7 @@ func _process(delta: float) -> void:
 	building_glow.set_night(director.darkness(), light)
 	cache_halos.refresh(delta, light)
 	fog_renderer.refresh()
+	storm_renderer.refresh()
 	explore_flags.refresh()
 	enemy_renderer.draw_enemies(enemies, clock.tick_count)
 	projectile_renderer.draw_shots(weapons.projectiles, clock.tick_count, light)
@@ -391,7 +431,8 @@ func _process(delta: float) -> void:
 ##   1. director -- day/night, the day counter (RunDirector.step)
 ##   2. waves -- tonight's groups set out on schedule (Waves.step)
 ##   3. units -- move, decide, build, chop, gather, haul (UnitSystem.step)
-##   4. fog -- units that walked into a new tile look around (FogOfWar.step_units)
+##   4. fog -- units that walked into a new tile look around (FogOfWar.step_units);
+##      the snowstorm re-covers what nothing sees (SnowStorm.step, Stage 10)
 ##   5. enemies -- fields, hash, targets, moving, hitting, burning (EnemySystem.step)
 ##   6. defence -- the base zaps, using the hash step 5 built (BaseDefence.step)
 ##   7. weapons -- aim and fire, then shots move and hit, then blasts and
@@ -409,6 +450,7 @@ func _simulate(dt: float) -> void:
 	waves.step(clock.tick_count)
 	units.step(dt)
 	fog.step_units(units.store)
+	storm.step(clock.tick_count)   # Stage 10: the snowstorm, a few times a second
 	enemies.tick = clock.tick_count
 	enemies.step(dt)
 	defence.step(clock.tick_count)
@@ -447,6 +489,9 @@ func _start_new_run() -> void:
 	unlocks.reset()
 	inventory.clear()
 	lava.clear()
+	watchtowers.clear()
+	_end_aiming()
+	notifications.clear()
 	# The relic tree as owned right now: this run keeps it (see `meta`).
 	meta = MetaState.new(meta_tree, SaveManager.profile.get("meta", {}))
 	_meta_locks = true
@@ -465,6 +510,7 @@ func _start_new_run() -> void:
 	pois.clear()
 	waves.clear()
 	forest.start_new(clock.tick_count, level.used_seed)
+	luck.reset(level.used_seed + 99)
 	clock.pop_pause(PAUSE_LEVEL_UP)
 	level_up.hide_screen()
 	_apply_meta_rules()
@@ -526,6 +572,12 @@ func _load_run(save: Dictionary) -> bool:
 	director.load_save_data(save.get("director", {}))
 	units.night = director.is_night
 	build_tools.load_save_data(save.get("build_tools", {}))
+	watchtowers.load_save_data(save.get("watchtowers", {}))
+	if save.has("luck"):
+		luck.load_save_data(save["luck"])
+	else:
+		luck.reset(level.used_seed + 99)   # an older run: fresh bags
+	storm.rebuild()
 	_set_gates(director.is_night)
 	if save.has("clock"):
 		clock.load_save_data(save["clock"])
@@ -563,6 +615,8 @@ func save_run() -> void:
 		"weapons": weapons.get_save_data(),
 		"demolition": demolition.get_save_data(),
 		"build_tools": build_tools.get_save_data(),
+		"watchtowers": watchtowers.get_save_data(),
+		"luck": luck.get_save_data(),
 		"progression": progression.get_save_data(),
 		"meta": {"levels": meta.get_levels(), "locks": _meta_locks},
 		# progression joins this as it is built. SaveManager neither knows nor
@@ -756,6 +810,10 @@ func _referenced_art() -> Array:
 	paths.append_array(preload("res://UI/level_up.gd").art_paths(augment_pool))
 	paths.append_array(preload("res://UI/xp_bar.gd").art_paths())
 	paths.append_array(preload("res://UI/meta_tree_screen.gd").art_paths(meta_tree))
+	paths.append_array(StormRenderer.art_paths())
+	paths.append_array(preload("res://UI/notifications.gd").art_paths())
+	paths.append_array([LevelGenerator.CAVE_FILE, LevelGenerator.GROUND_DIR + LevelGenerator.MOUNTAIN_FILE,
+		LevelGenerator.GROUND_DIR + LevelGenerator.SNOW_FILE])
 	paths.append_array(WallTiles.art_paths())
 	paths.append_array(OverlayRenderer.art_paths())
 	paths.append_array(preload("res://UI/shop_ui.gd").art_paths())
@@ -855,10 +913,18 @@ func _on_poi_spotted(id: int, type: String) -> void:
 	toast.show_message("Spotted %s." % what, 2.5)
 
 
-func _on_poi_opened(_type: String, message: String) -> void:
-	toast.show_message(message, 4.0)
-	if message != "":
-		progression.add_xp(Progression.POI_XP)
+## What the explorer found goes to the notifications (tuned after Stage 10):
+## it stays until clicked, unlike a toast.
+func _on_poi_opened(type: String, message: String) -> void:
+	if message == "":
+		return
+	var icon: String = LevelGenerator.POI_FILES.get(type, "")
+	if type == PointsOfInterest.DROPPED and not Art.exists(icon):
+		icon = LevelGenerator.POI_FILES[PointsOfInterest.BLUEPRINT_CACHE]
+	if type == PointsOfInterest.RELIC_CACHE or message.contains("relic"):
+		icon = "res://assets/ui/relic.png"
+	notifications.push(message, icon)
+	progression.add_xp(Progression.POI_XP)
 
 
 # --- Progression (Stage 7) ----------------------------------------------------
@@ -924,12 +990,44 @@ func _on_level_generated() -> void:
 	pass
 
 
-func _on_placement_finished(type: String, _cell: Vector2i) -> void:
+func _on_placement_finished(type: String, cell: Vector2i) -> void:
 	if type == "base":
 		units.start_run_kit(meta.start_workers())
 	else:
 		inventory.take(type)   # placed from the building bar
 		toast.hide_message()
+		if type == Watchtowers.TYPE:
+			_start_aiming(level.grid.get_occupant(cell))
+
+
+## Stage 10: the next click sets where watchtower `id` looks.
+func _start_aiming(id: int) -> void:
+	if not watchtowers.is_watchtower(id):
+		return
+	_aiming_tower = id
+	watch_cones.aiming = id
+	watch_cones.queue_redraw()
+	toast.show_message("Click where the watchtower should look.  %s: keep it as it is."
+		% Keybinds.describe_action("cancel_placement"), 5.0)
+
+
+func _end_aiming() -> void:
+	_aiming_tower = -1
+	if watch_cones != null:
+		watch_cones.aiming = -1
+		watch_cones.queue_redraw()
+
+
+## A click on a built watchtower re-aims it.
+func _watchtower_click() -> bool:
+	var cell := level.world_to_cell(get_global_mouse_position())
+	if not level.grid.in_bounds(cell) or not fog.is_explored(cell):
+		return false
+	var id := level.grid.get_occupant(cell)
+	if not watchtowers.is_watchtower(id):
+		return false
+	_start_aiming(id)
+	return true
 
 
 func _on_building_slot_pressed(type: String) -> void:
@@ -959,7 +1057,8 @@ func _on_item_pressed(id: String) -> void:
 			if stages[0][0] == id:
 				stage = stages[0]
 		build_placer.start_paint(tool_bar.icon_of(stage), _can_tool_cell)
-		toast.show_message("%s  %s: done." % [stage[3], cancel], 5.0)
+		toast.show_message("%s  %s: take back unbuilt ones (drag for more), or put the tool away."
+			% [stage[3], cancel], 5.0)
 	elif id == Demolition.ITEM:
 		_paint_tool = "shovel"
 		build_placer.start_paint("res://assets/ui/shovel.png", _can_dig_cell)
@@ -1067,6 +1166,50 @@ func _on_paint_moved(cell: Vector2i) -> void:
 	_paint_last = cell
 
 
+## Something not yet built stands (or is planned) here and can be taken back:
+## a road, bridge or crossing plan, an unbuilt wall or gate, or a construction
+## site from the building bar. Never the base.
+func _can_cancel_cell(cell: Vector2i) -> bool:
+	if not level.grid.in_bounds(cell) or not fog.is_explored(cell):
+		return false
+	if build_tools.has_unbuilt(cell):
+		return true
+	var b := level.grid.get_occupant(cell)
+	return level.store.is_alive(b) and not level.store.is_complete(b) and level.store.get_type(b) != "base" \
+		and level.get_building_data(level.store.get_type(b)) != null
+
+
+## Takes back what is unbuilt here: paint jobs are refunded, a construction
+## site goes back to the building bar (its progress is lost). True if anything
+## was cancelled.
+func _cancel_cell(cell: Vector2i) -> bool:
+	if not _can_cancel_cell(cell):
+		return false
+	if build_tools.cancel_at(cell):
+		return true
+	var b := level.grid.get_occupant(cell)
+	var type := level.store.get_type(b)
+	level.remove_building(cell)
+	inventory.add(type)
+	return true
+
+
+func _on_cancel_started(cell: Vector2i) -> void:
+	_cancel_cell(cell)
+	_cancel_last = cell
+
+
+## Every tile on the line from the last one, so a fast drag skips nothing.
+func _on_cancel_moved(cell: Vector2i) -> void:
+	if cell == _cancel_last:
+		return
+	var from := _cancel_last
+	var steps := maxi(absi(cell.x - from.x), absi(cell.y - from.y))
+	for n in range(1, steps + 1):
+		_cancel_cell(Vector2i((Vector2(from).lerp(Vector2(cell), float(n) / steps)).round()))
+	_cancel_last = cell
+
+
 ## Left click on a finished weapon building opens its panel and shows its
 ## range. Construction sites and fogged tiles do not count.
 func _weapon_click() -> bool:
@@ -1137,6 +1280,37 @@ func _on_options_visibility_changed() -> void:
 # --- Input --------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Right-click cancels unbuilt things, dragging over more (with no tool in
+	# hand; with one, BuildPlacer starts the stroke and calls back).
+	if _cancel_drag:
+		if event.is_action_released("cancel_placement"):
+			_cancel_drag = false
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventMouseMotion:
+			_on_cancel_moved(level.world_to_cell(get_global_mouse_position()))
+			return
+	if not build_placer.is_active() and _aiming_tower == -1 and not _dispatching \
+			and event.is_action_pressed("cancel_placement"):
+		var cell := level.world_to_cell(get_global_mouse_position())
+		if _can_cancel_cell(cell):
+			_cancel_drag = true
+			_on_cancel_started(cell)
+			get_viewport().set_input_as_handled()
+			return
+	if _aiming_tower != -1:
+		if event.is_action_pressed("left_click"):
+			watchtowers.aim_at(_aiming_tower, get_global_mouse_position())
+			storm.rebuild()
+			_end_aiming()
+			toast.hide_message()
+			get_viewport().set_input_as_handled()
+			return
+		if event.is_action_pressed("cancel_placement") or event.is_action_pressed("ui_cancel"):
+			_end_aiming()
+			toast.hide_message()
+			get_viewport().set_input_as_handled()
+			return
 	if _dispatching:
 		if event.is_action_pressed("left_click"):
 			_dispatch_click(event is InputEventWithModifiers and event.shift_pressed)
@@ -1153,6 +1327,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 		_deselect_weapon()   # a click anywhere else closes the weapon panel
+		if _watchtower_click():
+			get_viewport().set_input_as_handled()
+			return
 		if _tree_click():
 			get_viewport().set_input_as_handled()
 			return

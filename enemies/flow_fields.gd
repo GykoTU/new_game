@@ -100,6 +100,9 @@ func _derive(i: int) -> void:
 	var g := level.grid
 	var occ := g.occupancy[i]
 	if occ != WorldGrid.NO_OCCUPANT:
+		if LevelGenerator.WALK_OVER.has(level.store.get_type(occ)):
+			_derive_ground(i)   # a cache on the ground: walk over it
+			return
 		var data := level.get_building_data(level.store.get_type(occ))
 		var c := 0
 		if data != null:

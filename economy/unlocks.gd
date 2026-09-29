@@ -71,6 +71,9 @@ const FINDABLE := [
 
 ## Chance that a find is rare, while a rare blueprint is left to find.
 var rare_chance := 0.2
+## The run's luck (tuned after Stage 10): rare-or-common comes from a marble
+## bag. Null (tests, the pool alone): a plain roll.
+var luck: Luck
 ## What this run can find. FINDABLE until configure(); tests may narrow it.
 var findable: Array = FINDABLE.duplicate()
 
@@ -220,7 +223,10 @@ func _pick(rng: RandomNumberGenerator, lo: int, hi: int, rare: float) -> String:
 	if common.is_empty() and rare_ids.is_empty():
 		return ""
 	var roll := rng.randf()   # always drawn, so the stream does not depend on the pool
-	var pool := rare_ids if not rare_ids.is_empty() and (common.is_empty() or roll < chance) else common
+	var is_rare := roll < chance
+	if luck != null and not rare_ids.is_empty() and not common.is_empty():
+		is_rare = luck.chance("rare", chance)
+	var pool := rare_ids if not rare_ids.is_empty() and (common.is_empty() or is_rare) else common
 	return pool[rng.randi_range(0, pool.size() - 1)]
 
 

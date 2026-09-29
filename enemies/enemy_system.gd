@@ -49,6 +49,12 @@ var impact_speed := 60.0
 
 var kinds: Array[EnemyData] = []
 var fields := FlowFields.new()
+## Stage 10: the snowstorm (main.gd sets it). An enemy on a covered snow tile
+## is hidden: not drawn, and no weapon may target it.
+var storm: SnowStorm
+## The run's luck (tuned after Stage 10): blueprint drops come from a marble
+## bag per enemy kind, not a fresh roll. Null (tests): a plain roll.
+var luck: Luck
 var nearby := SpatialHash.new()
 var level: LevelGenerator
 var units: UnitSystem
@@ -233,7 +239,7 @@ func _kill(e: int, by_player: bool) -> void:
 	if by_player:
 		var kd := kinds[kind[e]]
 		xp_bank += kd.xp * max_hp[e] / maxf(kd.max_health, 1.0)
-	if by_player and unlocks != null and _rng.randf() < kinds[kind[e]].blueprint_drop_chance * drop_multiplier:
+	if by_player and unlocks != null and _drops(kinds[kind[e]].id, kinds[kind[e]].blueprint_drop_chance * drop_multiplier):
 		# Stage 9: a drop offers any tier the run has reached, never beyond.
 		var blueprint := unlocks.pick_findable(_rng, 0, unlocks.reached_tier)
 		if blueprint != "":
@@ -389,9 +395,12 @@ func _step_one(e: int, dt: float, decay: float) -> void:
 			var to := waypoint[e] - p
 			if to.length_squared() > 1.0:
 				steer = to.normalized()
-	# --- move
+	# --- move (walkers wade through snow: Stage 10)
 	var imp := impulse[e]
-	var vel := steer * (_speed[k] * (1.0 - slow)) + imp
+	var ground_speed := 1.0
+	if _flying[k] == 0 and tile[e] >= 0 and level.grid.ground[tile[e]] == WorldGrid.Ground.SNOW:
+		ground_speed = WorldGrid.SNOW_SPEED
+	var vel := steer * (_speed[k] * (1.0 - slow) * ground_speed) + imp
 	if vel.x > 1.0 or vel.x < -1.0:
 		facing_left[e] = 1 if vel.x < 0.0 else 0
 	if vel == Vector2.ZERO:
@@ -642,3 +651,19 @@ func load_save_data(data: Dictionary) -> void:
 		slow_strength[e] = float(slow[0]); slow_ticks[e] = int(slow[1])
 	if data.has("rng_state"):
 		_rng.state = int(data["rng_state"])
+
+
+## Alive and not hidden in the snowstorm: what weapons may aim at (Stage 10).
+func is_targetable(e: int) -> bool:
+	return is_alive(e) and (storm == null or not storm.hidden_pos(pos[e]))
+
+
+func is_hidden(e: int) -> bool:
+	return storm != null and storm.hidden_pos(pos[e])
+
+
+## Does this kill drop a blueprint? With memory when the run has its luck.
+func _drops(kind_id: String, p: float) -> bool:
+	if luck != null:
+		return luck.chance("drop:" + kind_id, p)
+	return _rng.randf() < p

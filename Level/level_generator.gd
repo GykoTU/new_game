@@ -35,7 +35,7 @@ const GROUND_FILES := {
 	Ground.GRASS_2: "ground_grass_2.png",
 	Ground.GRASS_3: "ground_grass_3.png",
 	Ground.FLOWERS: "ground_flowers.png",
-	Ground.ICE: "ground_ice.png",
+	Ground.SNOW: "ground_ice.png",   # ground_snow.png (SNOW_FILE) when it exists
 	Ground.LAVA: "ground_lava.png",
 	Ground.WATER: "ground_water.png",
 	Ground.SAND: "ground_sand.png",
@@ -70,24 +70,50 @@ const POI_FILES := {
 ## until it is drawn, the gold mine is shown in grey.
 const IRON_MINE_FILE := "res://assets/buildings/mines/mine_iron.png"
 
-## Environment patches: size range, which mine (if any) belongs in them, and
-## (Stage 9) how far from the start they may lie, in tiles: the resource
-## ladder as distance rings until Stage 10's mountains gate it for real.
-## Lava (copper) near, water (quartz) further, ice (diamond) furthest. Void
-## holds no mine: its patches may hold a region cache (the run's finale
-## arrives there in Stage 13).
-const ENVIRONMENTS := {
-	Ground.FLOWERS: {"min_radius": 3, "max_radius": 7, "mine": "", "ring": Vector2(0, 999)},
-	Ground.ICE: {"min_radius": 3, "max_radius": 6, "mine": "mine_diamond", "ring": Vector2(28, 999)},
-	Ground.LAVA: {"min_radius": 3, "max_radius": 6, "mine": "mine_copper", "ring": Vector2(11, 26)},
-	Ground.WATER: {"min_radius": 3, "max_radius": 7, "mine": "mine_quartz", "ring": Vector2(18, 36)},
-	Ground.VOID: {"min_radius": 1, "max_radius": 2, "mine": "", "ring": Vector2(22, 999)},
+## Stage 10: the map is a CHAIN OF REGIONS walled apart by mountains. The main
+## chain runs valley -> lava fields -> lakes -> snowfield -> void, each
+## joined to the next by one pass, and the pass INTO a region is sealed by
+## that region's hazard (KIND_DATA.gate): lava needs cobble, water a bridge,
+## the void a crossing; the snowfield's pass is open (the storm is its
+## hazard). Side valleys branch off as dead ends, some behind a band of
+## their parent's hazard. Every tile knows its region (WorldGrid.region).
+enum RegionKind { VALLEY, LAVA, LAKE, SNOW, VOID }
+const REGION_NAMES := ["the start valley", "the lava fields", "the lakes", "the snowfield", "the void"]
+const MAIN_CHAIN := [RegionKind.VALLEY, RegionKind.LAVA, RegionKind.LAKE, RegionKind.SNOW, RegionKind.VOID]
+## What a region's caches hold (ResourceKind.TIER).
+const KIND_TIER := [1, 2, 3, 4, 4]
+## Per kind: the hazard sealing the pass into it (-1: open), the hazard of
+## its patches (-1: none), how many patches and how big, the mine inside
+## each patch (or on the floor, for the snowfield), and the floor ground.
+const KIND_DATA := {
+	RegionKind.VALLEY: {"gate": -1, "patch": -1, "mine": "", "floor": -1},
+	RegionKind.LAVA: {"gate": Ground.LAVA, "patch": Ground.LAVA, "patches": Vector2i(3, 5),
+		"patch_r": Vector2i(3, 6), "mine": "mine_copper", "floor": -1},
+	RegionKind.LAKE: {"gate": Ground.WATER, "patch": Ground.WATER, "patches": Vector2i(2, 4),
+		"patch_r": Vector2i(3, 6), "mine": "mine_quartz", "floor": -1},
+	RegionKind.SNOW: {"gate": -1, "patch": -1, "mine": "mine_diamond", "floor_mines": Vector2i(2, 3),
+		"floor": Ground.SNOW},
+	RegionKind.VOID: {"gate": Ground.VOID, "patch": Ground.VOID, "patches": Vector2i(2, 3),
+		"patch_r": Vector2i(1, 2), "mine": "", "floor": -1},
 }
-## The region tier of each gated biome (ResourceKind.TIER): what its caches
-## hold. Cobble counts as lava: it only ever comes from lava.
-const REGION_TIER := {Ground.LAVA: 2, Ground.COBBLE: 2, Ground.WATER: 3, Ground.ICE: 4, Ground.VOID: 4}
-## Every run has at least one patch of each (the ladder must be climbable).
-const REQUIRED_ENVIRONMENTS := [Ground.LAVA, Ground.WATER, Ground.ICE, Ground.VOID]
+## Cave mouths per main region: where enemies come out at night (Waves).
+const CAVES := [2, 1, 2, 2, 2]
+## How much a region's rim wobbles (share of its radius), and so its furthest
+## reach: other regions and passes keep clear of that.
+const REGION_WOBBLE := 0.22
+const REGION_REACH := 1.22
+const CAVE := "cave"
+const CAVE_FILE := "res://assets/buildings/cave.png"
+const MOUNTAIN_FILE := "ground_mountain.png"
+const MOUNTAIN_SHEET := "mountain_sheet.png"
+const SNOW_FILE := "ground_snow.png"
+## Before Stage 10 a cache's tier came from the ground under it; saves from
+## then have no regions, so that is still the fallback.
+const REGION_TIER := {Ground.LAVA: 2, Ground.COBBLE: 2, Ground.WATER: 3, Ground.SNOW: 4, Ground.VOID: 4}
+## Caches lie on the ground: everyone walks over them (workers and enemies;
+## the explorer still stops beside one to open it). They occupy their tile,
+## so nothing is built or painted on them.
+const WALK_OVER := ["poi_blueprint_cache", "poi_relic_cache", "poi_blueprint_dropped"]
 
 const INVALID_CELL := Vector2i(-1, -1)
 
@@ -100,18 +126,27 @@ const INVALID_CELL := Vector2i(-1, -1)
 ## and children are readied before their parent, so it must not self-start.
 @export var generate_on_ready := true
 
-@export_group("Environments")
-## How many environment patches to try to place (flowers, ice, lava, water, void).
-@export var environment_count := 16
-## Minimum number of grass tiles between two different environments.
-@export var grass_gap := 3
-## Chance that an ice/lava/water patch gets a mine. The nearest patch of each
-## always gets one.
-@export_range(0.0, 1.0) var mine_chance := 0.75
-## Chance that a lava/water/ice patch holds a region cache (Stage 9). The
-## nearest lava, water and void patches always do (lava and water hold the
+@export_group("Regions")
+## Radius of the main regions (random in range) and of the start valley.
+@export var main_radius := Vector2i(13, 15)
+@export var valley_radius := 16
+## Radius of side valleys.
+@export var side_radius := Vector2i(8, 10)
+## Mountain between two joined regions, in tiles (random in range).
+@export var ridge := Vector2i(8, 11)
+## Chance that a main region gets a side valley, and that one is gated.
+@export_range(0.0, 1.0) var side_valley_chance := 0.85
+@export_range(0.0, 1.0) var side_gate_chance := 0.5
+## Half-width of a pass, and how long its hazard band is, in tiles.
+@export var pass_width := 1.6
+@export var gate_band := 3.0
+## Chance that a patch past the first gets a mine / a region cache. The first
+## patch of each region always gets both (the lava and lake caches hold the
 ## next gate's blueprint).
+@export_range(0.0, 1.0) var mine_chance := 0.75
 @export_range(0.0, 1.0) var region_cache_chance := 0.5
+## Plain trees on snow (wood in the storm is scarce).
+@export_range(0.0, 1.0) var tree_chance_snow := 0.01
 ## How many tiles of sand surround water.
 @export var sand_width := 1
 
@@ -130,18 +165,16 @@ const INVALID_CELL := Vector2i(-1, -1)
 
 @export_group("Start valley mines")
 ## Stage 9: gold and iron sit on open grass, no gate. One of each is always
-## inside the start clearing; these many more of each are scattered beyond it.
-@export var valley_mines: Dictionary[String, int] = {"mine_gold": 2, "mine_iron": 2}
-## How far from the start the scattered valley mines may lie, in tiles.
-@export var valley_mine_ring := Vector2(12, 26)
+## inside the start clearing; these many more of each elsewhere in the valley.
+@export var valley_mines: Dictionary[String, int] = {"mine_gold": 1, "mine_iron": 1}
 
 @export_group("Points of interest")
 ## How many of each point of interest to try to place, by type.
 @export var poi_counts: Dictionary[String, int] = {
 	"poi_blueprint_cache": 2, "poi_relic_cache": 3, "poi_npc_house": 1, "poi_fruit_tree": 1,
 }
-## No point of interest closer than this to the map centre: they are found, not given.
-@export var poi_min_distance := 16
+## No point of interest closer than this to the start: they are found, not given.
+@export var poi_min_distance := 12
 ## Minimum tiles between two points of interest.
 @export var poi_spacing := 8
 
@@ -167,10 +200,22 @@ var start_cell := INVALID_CELL
 ## set_gates_open(), which tells the flow fields.
 var gates_open := true
 
+## Stage 10: every region, as plain data (saved): kind, main (on the chain),
+## parent (index, -1 for the valley), center, radius, gated (its pass is
+## sealed by a hazard).
+var regions: Array[Dictionary] = []
+
 var _rng := RandomNumberGenerator.new()
 var _source_ids := {}
 var _building_textures := {}
+## Hazard patches inside regions: {type, center, radius, cells, region}.
 var _environments: Array[Dictionary] = []
+var _mountain_sheet := false
+## Generation only: per region its floor cells, and every pass tile (kept
+## clear of patches).
+var _region_cells: Array = []
+var _pass_cells := {}
+var _grass := PackedByteArray()
 
 
 func _ready() -> void:
@@ -179,27 +224,45 @@ func _ready() -> void:
 
 
 func generate() -> void:
-	_clear()
 	# Remember the seed actually used, even when level_seed is 0 (random).
 	used_seed = level_seed if level_seed != 0 else randi()
 	_rng.seed = used_seed
-	if not _load_assets():
-		return
-	start_cell = _map_centre()
-	_generate_grass()
-	_place_environments()
-	_place_mines()
-	_place_region_caches()
-	_surround_water_with_sand()
-	_place_start_mines()
-	_place_valley_mines()
-	_place_trees()
-	_ensure_start_trees()
-	_place_points_of_interest()
+	# Stage 10: a layout that fails its checks (a leak between regions, a
+	# chain that does not fit) is thrown away and drawn again from the same
+	# random stream, so a seed still always gives the same map.
+	for attempt in 24:
+		_clear()
+		if not _load_assets():
+			return
+		if _build_world():
+			break
 	_fog_all_but_start()
 	_draw_ground()
 	grid.notify = true
 	level_generated.emit()
+
+
+## One attempt at the whole map. False if it must be redone.
+func _build_world() -> bool:
+	_generate_grass()
+	if not _layout_regions():
+		return false
+	start_cell = regions[0]["center"]
+	_carve_regions()
+	_carve_passes()
+	_paint_patches()
+	_place_start_lakes()
+	_place_patch_contents()
+	_surround_water_with_sand()
+	_place_start_mines()
+	_place_valley_mines()
+	_place_snow_contents()
+	_place_side_valley_contents()
+	_place_trees()
+	_ensure_start_trees()
+	_place_caves()
+	_place_points_of_interest()
+	return _chain_sealed()
 
 
 # --- Saving and loading -------------------------------------------------------
@@ -218,6 +281,9 @@ func get_save_data() -> Dictionary:
 		# Roads, bridges, crossings (Stage 6): mostly zeros, like the fog.
 		"overlay": grid.overlay.compress(FileAccess.COMPRESSION_DEFLATE),
 		"start_cell": start_cell,
+		# Stage 10: which region each tile is in, and the regions themselves.
+		"region": grid.region.compress(FileAccess.COMPRESSION_DEFLATE),
+		"regions": regions.duplicate(true),
 	}
 
 
@@ -247,6 +313,16 @@ func load_save_data(data: Dictionary) -> bool:
 			FileAccess.COMPRESSION_DEFLATE)
 		if fog.size() == grid.tile_count():
 			grid.explored = fog
+	# Stage 10: maps from before have no regions (caches fall back to the
+	# ground for their tier, and nights to the map edges).
+	regions.clear()
+	if data.has("region"):
+		var reg := PackedByteArray(data["region"]).decompress(grid.tile_count(),
+			FileAccess.COMPRESSION_DEFLATE)
+		if reg.size() == grid.tile_count():
+			grid.region = reg
+			for entry in data.get("regions", []):
+				regions.append(Dictionary(entry))
 	if data.has("overlay"):
 		var over := PackedByteArray(data["overlay"]).decompress(grid.tile_count(),
 			FileAccess.COMPRESSION_DEFLATE)
@@ -332,7 +408,9 @@ func can_place(type: String, cell: Vector2i) -> bool:
 	for y in data.size.y:
 		for x in data.size.x:
 			var c := cell + Vector2i(x, y)
-			if not grid.in_bounds(c) or grid.is_occupied(c):
+			if not grid.in_bounds(c):
+				return false
+			if grid.is_occupied(c) and not _cleared_for(data, grid.get_occupant(c)):
 				return false
 			if not grid.is_explored(c):
 				return false   # nothing is placed where the player cannot see
@@ -341,6 +419,30 @@ func can_place(type: String, cell: Vector2i) -> bool:
 	if data.must_touch_prefix != "":
 		return _touches_free(type, cell, data)
 	return true
+
+
+## What a new building may take the place of (tuned after Stage 10): a tree
+## stump (it just disappears), and, for a weapon, a finished wall (the weapon
+## is mounted on the wall line and replaces that tile).
+func _cleared_for(data: BuildingData, occupant: int) -> bool:
+	if not store.is_alive(occupant):
+		return false
+	var t := store.get_type(occupant)
+	if t == "tree_stump":
+		return true
+	return data.weapon != null and t == "wall" and store.is_complete(occupant)
+
+
+## Removes what `_cleared_for` lets a new building of `type` replace.
+func _clear_footprint(type: String, cell: Vector2i) -> void:
+	var data := get_building_data(type)
+	if data == null:
+		return
+	for y in data.size.y:
+		for x in data.size.x:
+			var c := cell + Vector2i(x, y)
+			if grid.in_bounds(c) and grid.is_occupied(c) and _cleared_for(data, grid.get_occupant(c)):
+				remove_building(c)
 
 
 ## True if the footprint at `cell` touches a building whose type starts with
@@ -382,6 +484,7 @@ func _touching(origin: Vector2i, size: Vector2i) -> PackedInt32Array:
 func place_building(type: String, cell: Vector2i) -> bool:
 	if not can_place(type, cell):
 		return false
+	_clear_footprint(type, cell)
 	_add_building(cell, type)
 	building_placed.emit(type, cell)
 	return true
@@ -395,6 +498,7 @@ func place_construction(type: String, cell: Vector2i) -> int:
 		return BuildingStore.NONE
 	var data := get_building_data(type)
 	var start := 0.0 if data != null and data.build_work > 0.0 else 1.0
+	_clear_footprint(type, cell)
 	var id := _add_building(cell, type, start)
 	if id != BuildingStore.NONE:
 		building_placed.emit(type, cell)
@@ -521,6 +625,9 @@ func _clear() -> void:
 	store.clear()
 	base_cell = INVALID_CELL
 	_environments.clear()
+	regions.clear()
+	_region_cells.clear()
+	_pass_cells.clear()
 	_source_ids.clear()
 
 
@@ -535,15 +642,33 @@ func _load_assets() -> bool:
 	tile_set.tile_size = Vector2i(size, size)
 
 	for g in GROUND_FILES:
-		var tex: Texture2D = load(GROUND_DIR + GROUND_FILES[g])
+		var file: String = GROUND_FILES[g]
+		if g == Ground.SNOW and Art.exists(GROUND_DIR + SNOW_FILE):
+			file = SNOW_FILE
+		var tex: Texture2D = load(GROUND_DIR + file)
 		if tex == null:
-			push_error("LevelGenerator: missing ground texture " + GROUND_FILES[g])
+			push_error("LevelGenerator: missing ground texture " + file)
 			return false
 		var source := TileSetAtlasSource.new()
 		source.texture = tex
 		source.texture_region_size = Vector2i(size, size)
 		source.create_tile(Vector2i.ZERO)
 		_source_ids[g] = tile_set.add_source(source)
+	# Stage 10: mountains. A 16-frame connecting sheet (frame = neighbours that
+	# are mountain, N=1 E=2 S=4 W=8), else one tile, else a drawn stand-in.
+	var mountain := TileSetAtlasSource.new()
+	_mountain_sheet = Art.exists(GROUND_DIR + MOUNTAIN_SHEET)
+	if _mountain_sheet:
+		mountain.texture = load(GROUND_DIR + MOUNTAIN_SHEET)
+		mountain.texture_region_size = Vector2i(size, size)
+		for f in 16:
+			mountain.create_tile(Vector2i(f, 0))
+	else:
+		mountain.texture = load(GROUND_DIR + MOUNTAIN_FILE) if Art.exists(GROUND_DIR + MOUNTAIN_FILE) \
+			else _stand_in_rock(size)
+		mountain.texture_region_size = Vector2i(size, size)
+		mountain.create_tile(Vector2i.ZERO)
+	_source_ids[Ground.MOUNTAIN] = tile_set.add_source(mountain)
 
 	ground_layer.tile_set = tile_set
 
@@ -555,6 +680,7 @@ func _load_assets() -> bool:
 		_building_textures[type] = tex
 	_building_textures["mine_iron"] = Art.texture(IRON_MINE_FILE) if Art.exists(IRON_MINE_FILE) \
 		else _grey(_building_textures["mine_gold"])
+	_building_textures[CAVE] = Art.texture(CAVE_FILE) if Art.exists(CAVE_FILE) else _stand_in_cave(size)
 	for type in POI_FILES:
 		_building_textures[type] = Art.texture(POI_FILES[type])
 	if not Art.exists(POI_FILES["poi_blueprint_dropped"]):
@@ -580,174 +706,561 @@ func _generate_grass() -> void:
 			elif n > 0.15:
 				g = Ground.GRASS_3
 			grid.set_ground(Vector2i(x, y), g)
+	_grass = grid.ground.duplicate()
 
 
-## Rule 2: environments are blobs spaced apart, with grass between them.
-func _place_environments() -> void:
-	var types: Array = ENVIRONMENTS.keys()
-	var order: Array = types.duplicate()
-	_shuffle(order) # guarantees every environment type appears at least once
-	while order.size() < environment_count:
-		order.append(types[_rng.randi() % types.size()])
+# --- Regions (Stage 10) --------------------------------------------------------
 
-	var shape_noise := FastNoiseLite.new()
-	shape_noise.seed = _rng.randi()
-	shape_noise.frequency = 0.25
-
-	# The required ones first, so the ladder always has every rung; if a ring
-	# is too crowded they are tried again with the ring widened.
-	for type in REQUIRED_ENVIRONMENTS:
-		order.erase(type)
-		order.push_front(type)
-	for type in order:
-		var cfg: Dictionary = ENVIRONMENTS[type]
-		var radius := _rng.randi_range(cfg["min_radius"], cfg["max_radius"])
-		var center := _find_environment_spot(radius, cfg["ring"])
-		if center == INVALID_CELL and REQUIRED_ENVIRONMENTS.has(type) and not _has_environment(type):
-			var ring: Vector2 = cfg["ring"]
-			center = _find_environment_spot(cfg["min_radius"], Vector2(ring.x * 0.6, 999))
-			radius = cfg["min_radius"]
-		if center == INVALID_CELL:
-			continue
-		var cells := _paint_environment(type, center, radius, shape_noise)
-		if cells.is_empty():
-			continue
-		_environments.append({
-			"type": type,
-			"center": center,
-			"radius": radius,
-			"cells": cells,
-		})
-
-
-func _has_environment(type: int) -> bool:
-	for env in _environments:
-		if env["type"] == type:
+## Places the region centres: the main chain as a winding walk from the start
+## valley, then side valleys off each main region. Tries many layouts (plain
+## arithmetic, cheap); false only if none fits.
+func _layout_regions() -> bool:
+	for attempt in 200:
+		if _try_layout():
 			return true
 	return false
 
 
-## A free centre for a patch of `radius`, within `ring` (min, max tiles from
-## the start). INVALID_CELL if none was found.
-func _find_environment_spot(radius: int, ring := Vector2(0, 999)) -> Vector2i:
-	var margin := radius + 1
-	if map_size.x <= margin * 2 or map_size.y <= margin * 2:
+func _try_layout() -> bool:
+	regions.clear()
+	var size_f := Vector2(map_size)
+	var margin := float(valley_radius) * REGION_REACH + 3.0
+	if size_f.x <= margin * 2.0 or size_f.y <= margin * 2.0:
+		return false
+	var start := Vector2i(Vector2(_rng.randf_range(margin, size_f.x - margin),
+		_rng.randf_range(margin, size_f.y - margin)).round())
+	regions.append(_region(RegionKind.VALLEY, true, -1, start, valley_radius, false))
+	var heading := _rng.randf() * TAU
+	for n in range(1, MAIN_CHAIN.size()):
+		var kind: int = MAIN_CHAIN[n]
+		var r := _rng.randi_range(main_radius.x, main_radius.y)
+		var placed := false
+		for attempt in 60:
+			var ang := heading + _rng.randf_range(-1.3, 1.3)
+			var c := _try_region_spot(n - 1, r, ang)
+			if c == INVALID_CELL:
+				continue
+			regions.append(_region(kind, true, n - 1, c, r, KIND_DATA[kind]["gate"] != -1))
+			heading = ang
+			placed = true
+			break
+		if not placed:
+			return false
+	var mains := regions.size()
+	for parent in mains:
+		if _rng.randf() > side_valley_chance:
+			continue
+		var r := _rng.randi_range(side_radius.x, side_radius.y)
+		for attempt in 40:
+			var c := _try_region_spot(parent, r, _rng.randf() * TAU)
+			if c == INVALID_CELL:
+				continue
+			var pk: int = regions[parent]["kind"]
+			var gated: bool = KIND_DATA[pk]["patch"] != -1 and _rng.randf() < side_gate_chance
+			regions.append(_region(pk, false, parent, c, r, gated))
+			break
+	return true
+
+
+func _region(kind: int, main: bool, parent: int, center: Vector2i, radius: int, gated: bool) -> Dictionary:
+	return {"kind": kind, "main": main, "parent": parent, "center": center, "radius": radius,
+		"gated": gated}
+
+
+## A centre for a region of radius `r` joined to region `from`, in direction
+## `ang`, clear of every other region and pass. INVALID_CELL if it will not go.
+func _try_region_spot(from: int, r: int, ang: float) -> Vector2i:
+	var a: Dictionary = regions[from]
+	var ra: int = a["radius"]
+	var dist := float(ra + r) * REGION_REACH + float(_rng.randi_range(ridge.x, ridge.y))
+	var c := Vector2i((Vector2(a["center"]) + Vector2.RIGHT.rotated(ang) * dist).round())
+	var m := float(r) * REGION_REACH + 3.0
+	if c.x < m or c.y < m or c.x > map_size.x - 1 - m or c.y > map_size.y - 1 - m:
 		return INVALID_CELL
+	for i in regions.size():
+		var o: Dictionary = regions[i]
+		var need := float(r + int(o["radius"])) * REGION_REACH + float(ridge.x)
+		if Vector2(c - o["center"]).length() < need:
+			return INVALID_CELL
+		# The pass must not graze another region...
+		if i != from and _segment_distance(Vector2(o["center"]), Vector2(a["center"]), Vector2(c)) \
+				< float(o["radius"]) * REGION_REACH + 4.0:
+			return INVALID_CELL
+	# ...nor another pass.
+	for i in range(1, regions.size()):
+		var o: Dictionary = regions[i]
+		var p: int = o["parent"]
+		if p == from or i == from:
+			continue
+		if _segments_distance(Vector2(a["center"]), Vector2(c), Vector2(regions[p]["center"]),
+				Vector2(o["center"])) < 6.0:
+			return INVALID_CELL
+	return c
 
-	for attempt in 80:
-		var c := Vector2i(
-			_rng.randi_range(margin, map_size.x - 1 - margin),
-			_rng.randi_range(margin, map_size.y - 1 - margin)
-		)
-		var ok := true
-		if start_cell != INVALID_CELL:
-			var d := Vector2(c - start_cell).length()
-			if d < ring.x or d > ring.y:
-				continue
-		# Keep the base's patch of grass open.
-		if start_cell != INVALID_CELL and Vector2(c - start_cell).length() \
-				< start_open_radius + radius * 1.35 + grass_gap:
-			ok = false
-		for env in _environments:
-			var min_dist: float = (radius + env["radius"]) * 1.35 + grass_gap + sand_width
-			if Vector2(c - env["center"]).length() < min_dist:
-				ok = false
+
+## Every region's floor: a noisy disc, kept clear of every other region's
+## furthest reach so a ridge always stands between them. Everything else is
+## mountain.
+func _carve_regions() -> void:
+	var noise := FastNoiseLite.new()
+	noise.seed = _rng.randi()
+	noise.frequency = 0.09
+	var floor_mask := PackedByteArray()
+	floor_mask.resize(grid.tile_count())
+	_region_cells.clear()
+	for ri in regions.size():
+		var reg: Dictionary = regions[ri]
+		var cells: Array[Vector2i] = []
+		var c: Vector2i = reg["center"]
+		var r: int = reg["radius"]
+		var reach := int(ceil(r * REGION_REACH)) + 1
+		for y in range(maxi(c.y - reach, 2), mini(c.y + reach, map_size.y - 3) + 1):
+			for x in range(maxi(c.x - reach, 2), mini(c.x + reach, map_size.x - 3) + 1):
+				var cell := Vector2i(x, y)
+				var d := Vector2(cell - c).length()
+				if d > r * (1.0 + REGION_WOBBLE * noise.get_noise_2d(x, y)):
+					continue
+				var clear := true
+				for oi in regions.size():
+					if oi == ri:
+						continue
+					var o: Dictionary = regions[oi]
+					if Vector2(cell - o["center"]).length() < float(o["radius"]) * REGION_REACH + 4.0:
+						clear = false
+						break
+				if not clear or floor_mask[grid.index(cell)] != 0:
+					continue
+				floor_mask[grid.index(cell)] = 1
+				grid.region[grid.index(cell)] = ri
+				cells.append(cell)
+		_region_cells.append(cells)
+	for i in grid.tile_count():
+		if floor_mask[i] == 0:
+			grid.set_ground_at(i, Ground.MOUNTAIN)
+		else:
+			var f: int = KIND_DATA[regions[grid.region[i]]["kind"]]["floor"]
+			if f != -1:
+				grid.set_ground_at(i, f)
+
+
+## The passes: a corridor from each region to its parent, and across its
+## ridge (the tiles that were mountain) a band of the region's gate hazard.
+func _carve_passes() -> void:
+	_pass_cells.clear()
+	for ri in range(1, regions.size()):
+		var reg: Dictionary = regions[ri]
+		var parent: int = reg["parent"]
+		var a := Vector2(regions[parent]["center"])
+		var b := Vector2(reg["center"])
+		var length := a.distance_to(b)
+		var ridge_cells: Array[Vector2i] = []
+		var ridge_s := PackedFloat32Array()
+		var lo := Vector2i((Vector2(minf(a.x, b.x), minf(a.y, b.y)) - Vector2(3, 3)).floor())
+		var hi := Vector2i((Vector2(maxf(a.x, b.x), maxf(a.y, b.y)) + Vector2(3, 3)).ceil())
+		for y in range(maxi(lo.y, 1), mini(hi.y, map_size.y - 2) + 1):
+			for x in range(maxi(lo.x, 1), mini(hi.x, map_size.x - 2) + 1):
+				var cell := Vector2i(x, y)
+				var p := Vector2(cell)
+				var t := clampf((p - a).dot(b - a) / (length * length), 0.0, 1.0)
+				if p.distance_to(a.lerp(b, t)) > pass_width:
+					continue
+				var i := grid.index(cell)
+				_pass_cells[i] = true
+				if grid.ground[i] != Ground.MOUNTAIN:
+					continue
+				ridge_cells.append(cell)
+				ridge_s.append(t * length)
+		if ridge_cells.is_empty():
+			continue
+		var smin := INF
+		var smax := -INF
+		for sv in ridge_s:
+			smin = minf(smin, sv)
+			smax = maxf(smax, sv)
+		var mid := (smin + smax) * 0.5
+		# The ridge's tiles belong to the region on their side of its middle
+		# (where a gate's band sits), so a region never starts before its gate.
+		for k in ridge_cells.size():
+			var side_of := ri if ridge_s[k] >= mid else parent
+			var i := grid.index(ridge_cells[k])
+			grid.region[i] = side_of
+			var f: int = KIND_DATA[regions[side_of]["kind"]]["floor"]
+			grid.set_ground_at(i, f if f != -1 else _grass_at(ridge_cells[k]))
+		if not reg["gated"]:
+			continue
+		var kind: int = reg["kind"]
+		var hazard: int = KIND_DATA[kind]["gate"] if reg["main"] else KIND_DATA[kind]["patch"]
+		if hazard == -1:
+			continue
+		var half := minf(gate_band * 0.5, (smax - smin) * 0.5 + 0.01)
+		for k in ridge_cells.size():
+			if absf(ridge_s[k] - mid) <= half:
+				grid.set_ground(ridge_cells[k], hazard)
+
+
+## The grass variant the noise gave this tile before the mountains went in.
+func _grass_at(cell: Vector2i) -> int:
+	var v: int = _grass[grid.index(cell)]
+	return v
+
+
+## Hazard patches inside the lava fields, the lakes and the void, kept away
+## from the passes. Each holds (maybe) a mine and a region cache.
+func _paint_patches() -> void:
+	var noise := FastNoiseLite.new()
+	noise.seed = _rng.randi()
+	noise.frequency = 0.25
+	for ri in regions.size():
+		var reg: Dictionary = regions[ri]
+		var data: Dictionary = KIND_DATA[reg["kind"]]
+		if data["patch"] == -1 or not reg["main"]:
+			continue
+		var count := _rng.randi_range(data["patches"].x, data["patches"].y)
+		var cells: Array = _region_cells[ri]
+		var made := 0
+		for attempt in 300:
+			if made >= count or cells.is_empty():
 				break
-		if ok:
-			return c
-	return INVALID_CELL
-
-
-func _paint_environment(type: int, center: Vector2i, radius: int, noise: FastNoiseLite) -> Array[Vector2i]:
-	var cells: Array[Vector2i] = []
-	var reach := int(ceil(radius * 1.35)) + 1
-
-	for y in range(center.y - reach, center.y + reach + 1):
-		for x in range(center.x - reach, center.x + reach + 1):
-			var c := Vector2i(x, y)
-			if not grid.in_bounds(c):
+			var r := _rng.randi_range(data["patch_r"].x, data["patch_r"].y)
+			var c: Vector2i = cells[_rng.randi() % cells.size()]
+			if not _patch_fits(c, r, ri):
 				continue
-			# Noise wobbles the edge so patches look organic rather than circular.
-			var edge := radius * (1.0 + 0.35 * noise.get_noise_2d(x, y))
-			if Vector2(c - center).length() > edge:
+			var painted: Array[Vector2i] = []
+			var reach := int(ceil(r * 1.35)) + 1
+			for y in range(c.y - reach, c.y + reach + 1):
+				for x in range(c.x - reach, c.x + reach + 1):
+					var cell := Vector2i(x, y)
+					if not grid.in_bounds(cell) or grid.region_of(cell) != ri:
+						continue
+					if Vector2(cell - c).length() > r * (1.0 + 0.35 * noise.get_noise_2d(x, y)):
+						continue
+					if not grid.is_grass(grid.get_ground(cell)) or _near_pass(cell, 3):
+						continue
+					grid.set_ground(cell, data["patch"])
+					painted.append(cell)
+			if painted.size() < 3:
 				continue
-			if not grid.is_grass(grid.get_ground(c)):
+			_environments.append({"type": data["patch"], "center": c, "radius": r, "cells": painted,
+				"region": ri})
+			made += 1
+	# Flowers (fruit trees) in the valley and the lakes, away from the start.
+	for ri in regions.size():
+		var kind: int = regions[ri]["kind"]
+		if not regions[ri]["main"] or not (kind == RegionKind.VALLEY or kind == RegionKind.LAKE):
+			continue
+		var cells: Array = _region_cells[ri]
+		for attempt in 30:
+			var c: Vector2i = cells[_rng.randi() % cells.size()]
+			if Vector2(c - start_cell).length() < start_reveal_radius + 4 or not _patch_fits(c, 3, ri):
 				continue
-			if _near_other_environment(c, type):
-				continue
-			grid.set_ground(c, type)
-			cells.append(c)
-	return cells
+			for y in range(c.y - 4, c.y + 5):
+				for x in range(c.x - 4, c.x + 5):
+					var cell := Vector2i(x, y)
+					if grid.in_bounds(cell) and grid.region_of(cell) == ri and grid.is_grass(grid.get_ground(cell)) \
+							and Vector2(cell - c).length() <= 3.5 * (1.0 + 0.3 * noise.get_noise_2d(x, y)) \
+							and not _near_pass(cell, 2):
+						grid.set_ground(cell, Ground.FLOWERS)
+			break
 
 
-## True if a different environment is closer than the required grass gap.
-func _near_other_environment(cell: Vector2i, type: int) -> bool:
-	var check := grass_gap + sand_width
-	for dy in range(-check, check + 1):
-		for dx in range(-check, check + 1):
+## Two small lakes by the start (tuned after Stage 10), without mines: the
+## bucket needs water, and the valley has no other. The first lies inside the
+## revealed clearing, the second a little beyond it.
+func _place_start_lakes() -> void:
+	var cells: Array = _region_cells[0]
+	var placed: Array[Vector2i] = []
+	var rings := [Vector2(start_open_radius + 3, start_reveal_radius - 2),
+		Vector2(start_reveal_radius, start_reveal_radius + 6)]
+	for ring: Vector2 in rings:
+		for attempt in 120:
+			var c: Vector2i = cells[_rng.randi() % cells.size()]
+			var d := Vector2(c - start_cell).length()
+			if d < ring.x or d > ring.y or _near_pass(c, 4):
+				continue
+			var crowded := false
+			for o in placed:
+				if Vector2(c - o).length() < 8.0:
+					crowded = true
+			if crowded:
+				continue
+			var painted := 0
+			for y in range(c.y - 2, c.y + 3):
+				for x in range(c.x - 2, c.x + 3):
+					var cell := Vector2i(x, y)
+					if not grid.in_bounds(cell) or grid.region_of(cell) != 0 \
+							or not grid.is_grass(grid.get_ground(cell)):
+						continue
+					if Vector2(cell - c).length() <= 1.6 + 0.6 * _rng.randf():
+						grid.set_ground(cell, Ground.WATER)
+						painted += 1
+			if painted >= 4:
+				placed.append(c)
+				break
+
+
+## Room for a patch of radius `r` at `c` in region `ri`: inside the region,
+## off the passes, clear of the start clearing and of other patches.
+func _patch_fits(c: Vector2i, r: int, ri: int) -> bool:
+	if Vector2(c - start_cell).length() < start_open_radius + r + 3:
+		return false
+	if _near_pass(c, r + 1):
+		return false
+	for env in _environments:
+		if Vector2(c - env["center"]).length() < r + int(env["radius"]) + 2:
+			return false
+	var h := int(ceil(r * 0.6))
+	for dy in [-h, 0, h]:
+		for dx in [-h, 0, h]:
+			var n := c + Vector2i(dx, dy)
+			if not grid.in_bounds(n) or grid.region_of(n) != ri:
+				return false
+	return true
+
+
+func _near_pass(cell: Vector2i, dist: int) -> bool:
+	for dy in range(-dist, dist + 1):
+		for dx in range(-dist, dist + 1):
 			var n := cell + Vector2i(dx, dy)
-			if not grid.in_bounds(n):
-				continue
-			var g := grid.get_ground(n)
-			if grid.is_grass(g) or g == type or g == Ground.SAND:
-				continue
-			var needed := grass_gap
-			if g == Ground.WATER or type == Ground.WATER:
-				needed += sand_width # leave room for the sand border
-			if maxi(absi(dx), absi(dy)) <= needed:
+			if grid.in_bounds(n) and _pass_cells.has(grid.index(n)):
 				return true
 	return false
 
 
-## Rules 4-7 and 9: each mine sits on its environment and is fully surrounded by it.
-func _place_mines() -> void:
+## Mines and region caches inside the hazard patches. The first patch of each
+## region always gets both.
+func _place_patch_contents() -> void:
+	var first := {}
+	var cached := {}
 	for env in _environments:
-		var type: int = env["type"]
-		var mine: String = ENVIRONMENTS[type]["mine"]
-		if mine == "":
-			continue
-		if env != _nearest_environment(type) and _rng.randf() > mine_chance:
-			continue
-		var cell := _pick_interior_cell(env)
-		_surround(cell, type)
-		_add_building(cell, mine)
-		env["mine_cell"] = cell
+		var ri: int = env["region"]
+		var data: Dictionary = KIND_DATA[regions[ri]["kind"]]
+		var is_first := not first.has(ri)
+		first[ri] = true
+		if data["mine"] != "" and (is_first or _rng.randf() < mine_chance):
+			var cell := _pick_interior_cell(env)
+			_surround(cell, env["type"])
+			_add_building(cell, data["mine"])
+		if is_first or _rng.randf() < region_cache_chance:
+			var cell := _pick_interior_cell(env, 2)
+			if cell == INVALID_CELL and is_first and not grid.is_occupied(env["center"]):
+				cell = env["center"]   # a small patch: _surround grows it round the cache
+			if cell == INVALID_CELL and is_first:
+				cell = _pick_interior_cell(env, 1)
+			if cell != INVALID_CELL:
+				_surround(cell, env["type"])
+				_add_building(cell, PointsOfInterest.BLUEPRINT_CACHE)
+				cached[ri] = true
+	# Every hazard region must hold a cache (the lava and lake ones hold the
+	# next gate's key): if no patch had room, one goes on its floor.
+	for ri in first:
+		if not cached.has(ri):
+			_place_on_floor(ri, PointsOfInterest.BLUEPRINT_CACHE, 2)
 
 
-## The patch of `type` closest to the start, or {} if there is none.
-func _nearest_environment(type: int) -> Dictionary:
-	var best := {}
-	var best_d := INF
-	for env in _environments:
-		if env["type"] != type:
+## The snowfield has no patches: its diamonds and caches lie on the snow.
+func _place_snow_contents() -> void:
+	for ri in regions.size():
+		var reg: Dictionary = regions[ri]
+		if reg["kind"] != RegionKind.SNOW or not reg["main"]:
 			continue
-		var d := Vector2(env["center"] - start_cell).length()
-		if d < best_d:
-			best_d = d
-			best = env
-	return best
+		var data: Dictionary = KIND_DATA[RegionKind.SNOW]
+		var mines := _rng.randi_range(data["floor_mines"].x, data["floor_mines"].y)
+		for n in mines:
+			_place_on_floor(ri, data["mine"], 3)
+		_place_on_floor(ri, PointsOfInterest.BLUEPRINT_CACHE, 3)
+		if _rng.randf() < region_cache_chance:
+			_place_on_floor(ri, PointsOfInterest.BLUEPRINT_CACHE, 3)
 
 
-## Stage 9: blueprint caches inside the gated biomes. They hold their
-## region's tier (PointsOfInterest reads the ground under them), so the
-## gate that reaches a resource also reaches its tech. The nearest lava and
-## water patches always have one (it holds the next gate's blueprint), and so
-## does the nearest void patch (the crossing must lead somewhere).
-func _place_region_caches() -> void:
-	for env in _environments:
-		var type: int = env["type"]
-		if not REGION_TIER.has(type):
+## Each side valley holds a find: a cache of its region's tier or relics, and
+## maybe one more mine of its parent's kind.
+func _place_side_valley_contents() -> void:
+	for ri in regions.size():
+		var reg: Dictionary = regions[ri]
+		if reg["main"]:
 			continue
-		var forced: bool = type != Ground.ICE and env == _nearest_environment(type)
-		if not forced and _rng.randf() > region_cache_chance:
+		var kind: int = reg["kind"]
+		var poi := PointsOfInterest.BLUEPRINT_CACHE if _rng.randf() < 0.5 else PointsOfInterest.RELIC_CACHE
+		_place_on_floor(ri, poi, 2)
+		if _rng.randf() < 0.5:
+			match kind:
+				RegionKind.VALLEY:
+					_place_on_floor(ri, "mine_gold" if _rng.randf() < 0.5 else "mine_iron", 2)
+				RegionKind.SNOW:
+					_place_on_floor(ri, "mine_diamond", 2)
+				RegionKind.LAVA, RegionKind.LAKE:
+					var cell := _place_on_floor(ri, KIND_DATA[kind]["mine"], 2)
+					if cell != INVALID_CELL:
+						_surround(cell, KIND_DATA[kind]["patch"])
+
+
+## Puts `type` on a free floor tile of region `ri` (grass or snow, floor all
+## round, nothing within `spacing`, off the passes). Returns the cell or
+## INVALID_CELL.
+func _place_on_floor(ri: int, type: String, spacing: int) -> Vector2i:
+	var cells: Array = _region_cells[ri]
+	if cells.is_empty():
+		return INVALID_CELL
+	for attempt in 60:
+		var c: Vector2i = cells[_rng.randi() % cells.size()]
+		if grid.region_of(c) != ri or not _is_floor(grid.get_ground(c)) or _near_pass(c, 1):
 			continue
-		var cell := _pick_interior_cell(env, 2)
-		if cell == INVALID_CELL and forced and not grid.is_occupied(env["center"]):
-			cell = env["center"]   # a small patch: _surround grows it round the cache
-		if cell == INVALID_CELL:
+		if Vector2(c - start_cell).length() <= start_reveal_radius + 1 and type.begins_with("poi_"):
 			continue
-		_surround(cell, type)
-		_add_building(cell, PointsOfInterest.BLUEPRINT_CACHE)
+		var ok := true
+		for n in _neighbors(c):
+			if not grid.in_bounds(n) or not _is_floor(grid.get_ground(n)):
+				ok = false
+				break
+		if not ok or _building_within(c, spacing):
+			continue
+		_add_building(c, type)
+		return c
+	return INVALID_CELL
+
+
+func _is_floor(g: int) -> bool:
+	return grid.is_grass(g) or g == Ground.SNOW or g == Ground.FLOWERS or g == Ground.SAND
+
+
+## Cave mouths: mountain tiles on a region's rim with a walkable floor tile
+## in front (the exit), spread apart, away from the start.
+func _place_caves() -> void:
+	var placed: Array[Vector2i] = []
+	for ri in regions.size():
+		var reg: Dictionary = regions[ri]
+		if not reg["main"]:
+			continue
+		var want: int = CAVES[MAIN_CHAIN.find(reg["kind"])]
+		var spots: Array[Vector2i] = []
+		for c: Vector2i in _region_cells[ri]:
+			if not _is_floor(grid.get_ground(c)) or _near_pass(c, 2):
+				continue
+			if Vector2(c - reg["center"]).length() < float(reg["radius"]) * 0.55:
+				continue
+			if Vector2(c - start_cell).length() < 12.0:
+				continue
+			for d in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+				var m: Vector2i = c + d
+				if grid.in_bounds(m) and grid.get_ground(m) == Ground.MOUNTAIN and not grid.is_occupied(m):
+					spots.append(m)
+		_shuffle(spots)
+		var made := 0
+		for m in spots:
+			if made >= want:
+				break
+			var crowded := false
+			for o in placed:
+				if Vector2(m - o).length() < 12.0:
+					crowded = true
+					break
+			if crowded or cave_exit_of(m) == INVALID_CELL:
+				continue
+			_add_building(m, CAVE)
+			placed.append(m)
+			made += 1
+
+
+## The walkable tile in front of a cave mouth, or INVALID_CELL.
+func cave_exit_of(cell: Vector2i) -> Vector2i:
+	for d in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		var n: Vector2i = cell + d
+		if grid.in_bounds(n) and not grid.is_occupied(n) and _is_floor(grid.get_ground(n)):
+			return n
+	return INVALID_CELL
+
+
+## Every cave mouth on the map (building ids).
+func caves() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for id in store.alive_ids():
+		if store.get_type(id) == CAVE:
+			out.append(id)
+	return out
+
+
+## The check that makes the chain a chain: walking on the ground alone (no
+## bridges, no cobble), each group of regions joined by open passes is cut off
+## from every other. A leak means the layout is redrawn.
+func _chain_sealed() -> bool:
+	var group := PackedInt32Array()
+	group.resize(regions.size())
+	for ri in regions.size():
+		var g := ri
+		while not regions[g]["gated"] and regions[g]["parent"] != -1:
+			g = regions[g]["parent"]
+		group[ri] = g
+	var comp := _components()
+	var seen := {}   # component -> group
+	for ri in regions.size():
+		for c: Vector2i in _region_cells[ri]:
+			var k := comp[grid.index(c)]
+			if k < 0:
+				continue
+			if seen.has(k) and seen[k] != group[ri]:
+				return false
+			seen[k] = group[ri]
+	return true
+
+
+## Walkable components of the bare ground (buildings ignored), -1 elsewhere.
+func _components() -> PackedInt32Array:
+	var comp := PackedInt32Array()
+	comp.resize(grid.tile_count())
+	comp.fill(-1)
+	var w := map_size.x
+	var next := 0
+	for start in grid.tile_count():
+		if comp[start] != -1 or (int(WorldGrid.GROUND_BLOCKING[grid.ground[start]]) & WorldGrid.BLOCKS_UNIT) != 0:
+			continue
+		var stack := PackedInt32Array([start])
+		comp[start] = next
+		while not stack.is_empty():
+			var i := stack[stack.size() - 1]
+			stack.resize(stack.size() - 1)
+			@warning_ignore("integer_division")
+			var y := i / w
+			var x := i % w
+			for d in [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]:
+				var nx: int = x + d[0]
+				var ny: int = y + d[1]
+				if nx < 0 or ny < 0 or nx >= w or ny >= map_size.y:
+					continue
+				var j := ny * w + nx
+				if comp[j] != -1 or (int(WorldGrid.GROUND_BLOCKING[grid.ground[j]]) & WorldGrid.BLOCKS_UNIT) != 0:
+					continue
+				comp[j] = next
+				stack.append(j)
+		next += 1
+	return comp
+
+
+## The tier of the region a cell lies in: what a cache there holds. Maps from
+## before Stage 10 fall back to the ground under it.
+func region_tier(cell: Vector2i) -> int:
+	var ri := grid.region_of(cell)
+	if ri != WorldGrid.NO_REGION and ri < regions.size():
+		return KIND_TIER[regions[ri]["kind"]]
+	return int(REGION_TIER.get(grid.get_ground(cell), 1))
+
+
+## The region kind at a cell (RegionKind), or -1.
+func region_kind(cell: Vector2i) -> int:
+	var ri := grid.region_of(cell)
+	return regions[ri]["kind"] if ri != WorldGrid.NO_REGION and ri < regions.size() else -1
+
+
+static func _segment_distance(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var t := clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+	return p.distance_to(a + ab * t)
+
+
+static func _segments_distance(a: Vector2, b: Vector2, c: Vector2, d: Vector2) -> float:
+	if Geometry2D.segment_intersects_segment(a, b, c, d) != null:
+		return 0.0
+	return minf(minf(_segment_distance(a, c, d), _segment_distance(b, c, d)),
+		minf(_segment_distance(c, a, b), _segment_distance(d, a, b)))
 
 
 ## Prefers a cell whose 8 neighbors already match; falls back to the patch
@@ -821,6 +1334,9 @@ func _place_trees() -> void:
 			elif grid.is_grass(g):
 				if _rng.randf() < tree_chance_grass:
 					_add_building(c, "tree")
+			elif g == Ground.SNOW:
+				if _rng.randf() < tree_chance_snow:
+					_add_building(c, "tree")
 
 
 ## Stage 9: the start valley's metals. One gold and one iron mine sit on the
@@ -842,17 +1358,84 @@ func _place_start_mines() -> void:
 		angle += PI
 
 
-## More gold and iron on the valley's grass, beyond the clearing.
+## More gold and iron in the start valley, beyond the clearing.
 func _place_valley_mines() -> void:
 	for type in valley_mines:
 		for n in valley_mines[type]:
 			for attempt in 60:
-				var c := Vector2i(_rng.randi_range(2, map_size.x - 3), _rng.randi_range(2, map_size.y - 3))
-				var d := Vector2(c - start_cell).length()
-				if d < valley_mine_ring.x or d > valley_mine_ring.y or not _free_grass(c, 2):
+				var cells: Array = _region_cells[0]
+				var c: Vector2i = cells[_rng.randi() % cells.size()]
+				if Vector2(c - start_cell).length() < start_reveal_radius + 2 or not _free_grass(c, 2) \
+						or _near_pass(c, 1):
 					continue
 				_add_building(c, type)
 				break
+
+
+## Points of interest (Stage 10): each type in the regions it belongs to --
+## tier-1 caches in the valley and its side valleys, relics in side valleys
+## first, the NPC house by the lava or the lakes, the fruit tree by the lakes
+## or in the snow. Never in the start clearing, spaced apart.
+func _place_points_of_interest() -> void:
+	var prefer := {
+		PointsOfInterest.BLUEPRINT_CACHE: [RegionKind.VALLEY],
+		PointsOfInterest.RELIC_CACHE: [RegionKind.LAVA, RegionKind.LAKE, RegionKind.SNOW, RegionKind.VOID],
+		PointsOfInterest.NPC_HOUSE: [RegionKind.LAVA, RegionKind.LAKE],
+		PointsOfInterest.FRUIT_TREE: [RegionKind.LAKE, RegionKind.SNOW],
+	}
+	var placed: Array[Vector2i] = []
+	for id in store.alive_ids():
+		if store.get_type(id).begins_with(PointsOfInterest.PREFIX):
+			placed.append(store.get_cell(id))
+	for type in poi_counts:
+		if not POI_FILES.has(type):
+			push_warning("LevelGenerator: unknown point of interest '%s'." % type)
+			continue
+		var kinds: Array = prefer.get(type, [])
+		for n in poi_counts[type]:
+			# Side valleys first for relics; then the preferred regions; then anywhere.
+			var pools: Array = []
+			if type == PointsOfInterest.RELIC_CACHE:
+				pools.append(_regions_where(func(reg): return not reg["main"]))
+			pools.append(_regions_where(func(reg): return kinds.has(reg["kind"])))
+			pools.append(_regions_where(func(_reg): return true))
+			for pool in pools:
+				if _place_poi_in(type, pool, placed):
+					break
+
+
+func _regions_where(test: Callable) -> Array:
+	var out := []
+	for ri in regions.size():
+		if test.call(regions[ri]):
+			out.append(ri)
+	return out
+
+
+func _place_poi_in(type: String, pool: Array, placed: Array[Vector2i]) -> bool:
+	if pool.is_empty():
+		return false
+	for attempt in 80:
+		var ri: int = pool[_rng.randi() % pool.size()]
+		var cells: Array = _region_cells[ri]
+		if cells.is_empty():
+			continue
+		var c: Vector2i = cells[_rng.randi() % cells.size()]
+		if grid.is_occupied(c) or not _is_floor(grid.get_ground(c)) or _near_pass(c, 1):
+			continue
+		if Vector2(c - start_cell).length() < poi_min_distance:
+			continue
+		var crowded := false
+		for other in placed:
+			if Vector2(c - other).length() < poi_spacing:
+				crowded = true
+				break
+		if crowded:
+			continue
+		_add_building(c, type)
+		placed.append(c)
+		return true
+	return false
 
 
 ## Grass, in bounds, with nothing built within `spacing` tiles and grass all
@@ -913,32 +1496,6 @@ func _ensure_start_trees() -> void:
 		have += 1
 
 
-## Points of interest go on free grass, away from the start and from each other.
-func _place_points_of_interest() -> void:
-	var placed: Array[Vector2i] = []
-	for type in poi_counts:
-		if not POI_FILES.has(type):
-			push_warning("LevelGenerator: unknown point of interest '%s'." % type)
-			continue
-		for n in poi_counts[type]:
-			for attempt in 80:
-				var c := Vector2i(_rng.randi_range(1, map_size.x - 2), _rng.randi_range(1, map_size.y - 2))
-				if grid.is_occupied(c) or not grid.is_grass(grid.get_ground(c)):
-					continue
-				if Vector2(c - start_cell).length() < poi_min_distance:
-					continue
-				var crowded := false
-				for other in placed:
-					if Vector2(c - other).length() < poi_spacing:
-						crowded = true
-						break
-				if crowded:
-					continue
-				_add_building(c, type)
-				placed.append(c)
-				break
-
-
 ## The middle tile (rounded down on even sizes, on purpose).
 func _map_centre() -> Vector2i:
 	@warning_ignore("integer_division")
@@ -955,7 +1512,49 @@ func _draw_ground() -> void:
 	for y in map_size.y:
 		for x in map_size.x:
 			var c := Vector2i(x, y)
-			ground_layer.set_cell(c, _source_ids[grid.get_ground(c)], Vector2i.ZERO)
+			var g := grid.get_ground(c)
+			var frame := Vector2i.ZERO
+			if g == Ground.MOUNTAIN and _mountain_sheet:
+				frame = Vector2i(_mountain_mask(c), 0)
+			ground_layer.set_cell(c, _source_ids[g], frame)
+
+
+## Which neighbours are mountain too (N=1 E=2 S=4 W=8); off the map counts.
+func _mountain_mask(c: Vector2i) -> int:
+	var m := 0
+	var dirs := [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
+	for k in 4:
+		var n: Vector2i = c + dirs[k]
+		if not grid.in_bounds(n) or grid.get_ground(n) == Ground.MOUNTAIN:
+			m |= 1 << k
+	return m
+
+
+## A dark, speckled rock tile until ground_mountain.png exists.
+static func _stand_in_rock(size: int) -> Texture2D:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for y in size:
+		for x in size:
+			var v := 0.26 + rng.randf() * 0.07 + (0.05 if (x + y) % 11 == 0 else 0.0)
+			img.set_pixel(x, y, Color(v, v * 0.95, v * 0.9))
+	return ImageTexture.create_from_image(img)
+
+
+## A dark arch in the rock until cave.png exists.
+static func _stand_in_cave(size: int) -> Texture2D:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var c := Vector2(size * 0.5, size * 0.85)
+	for y in size:
+		for x in size:
+			var d := Vector2(x + 0.5, y + 0.5) - c
+			if d.y < 0.0 and d.length() < size * 0.42 or (d.y >= 0.0 and absf(d.x) < size * 0.42 and y < size - 1):
+				img.set_pixel(x, y, Color(0.05, 0.04, 0.05, 0.95))
+			elif d.length() < size * 0.48 and d.y < 0.0:
+				img.set_pixel(x, y, Color(0.18, 0.16, 0.15, 1.0))
+	return ImageTexture.create_from_image(img)
 
 
 ## Registers a building, claims its tiles and creates its sprite.
@@ -965,7 +1564,7 @@ func _add_building(cell: Vector2i, type: String, progress: float = 1.0) -> int:
 	# Player buildings come from BuildingData and can be bigger.
 	var texture: Texture2D = _building_textures.get(type)
 	var size := Vector2i.ONE
-	var block_flags := WorldGrid.BLOCKS_UNIT
+	var block_flags := 0 if WALK_OVER.has(type) else WorldGrid.BLOCKS_UNIT
 	var max_health := BuildingStore.DEFAULT_MAX_HEALTH
 	var data := get_building_data(type)
 	if data != null:

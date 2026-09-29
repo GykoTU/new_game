@@ -49,7 +49,7 @@ func step(tick: int) -> void:
 	var e := -1
 	var best := r * r
 	for id in enemies.nearby.query(from, r):
-		if not enemies.is_alive(id):
+		if not enemies.is_targetable(id):
 			continue
 		var d := enemies.pos[id].distance_squared_to(from)
 		if d <= best:

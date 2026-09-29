@@ -99,9 +99,12 @@ func draw_enemies(store: EnemyStore, tick: int) -> void:
 	var lists := {}
 	for key in _batches:
 		lists[key] = []
+	var system := store as EnemySystem
 	for e in EnemyStore.CAP:
 		if not store.is_alive(e):
 			continue
+		if system != null and system.is_hidden(e):
+			continue   # in the snowstorm (Stage 10)
 		var k: int = store.kind[e]
 		lists["%d:%s" % [k, _anim_for(k, store.state[e] == EnemyStore.State.ATTACK)]].append(e)
 	var ticks_per_frame := maxi(int(round(frame_time / GameClock.TICK_DELTA)), 1)

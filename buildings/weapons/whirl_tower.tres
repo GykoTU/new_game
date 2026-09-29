@@ -13,4 +13,4 @@ build_work = 12.0
 tags = PackedStringArray("building", "weapon", "whirl_tower")
 threat_priority = 3.0
 weapon = ExtResource("2_wd")
-allowed_grounds = 655
+allowed_grounds = 671

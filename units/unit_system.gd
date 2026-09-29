@@ -31,6 +31,10 @@ var repair_hp_per_second := 10.0
 var store := UnitStore.new()
 var drops := DropStore.new()
 var pathing := UnitPathing.new()
+## Since the tuning after Stage 10 every worker walks through the player's
+## buildings (UnitPathing.walk_buildings); builders no longer need their own
+## grid. Kept as a name for the same object.
+var builder_pathing := pathing
 var board := JobBoard.new()
 var level: LevelGenerator
 ## Marked trees and chopping (Stage 2b). Optional: without it, builders never chop.
@@ -51,9 +55,12 @@ var modifiers: ModifierSet
 var type_blocks := {}
 ## The simulation tick, set by main.gd before each step.
 var tick := 0
-## Night: workers stay home, except builders, who still take repair jobs (and
-## are out in the open while they do). Set by main.gd from the RunDirector.
+## Night: workers stay home (builders too, unless `repair_at_night`). Set by
+## main.gd from the RunDirector.
 var night := false
+## Builders repair at night too. Off: repairs are day work (tuned after Stage
+## 10). Meant to become a city hall priority.
+var repair_at_night := false
 
 var _house_blocks := {}   # house building type -> StatBlock, for HOUSE_CAPACITY
 var _house_mine := {}     # worker house id -> mine id
@@ -102,6 +109,8 @@ func setup(p_level: LevelGenerator, p_economy: Economy, p_modifiers: ModifierSet
 
 
 func _on_level_generated() -> void:
+	pathing.walk_buildings = true
+	pathing.level = level
 	pathing.rebuild(level.grid)
 	var tile := float(level.ground_layer.tile_set.tile_size.x)
 	_inv_tile = 1.0 / tile
@@ -464,8 +473,8 @@ func _finish_opening(id: int) -> void:
 
 # --- Day and night ------------------------------------------------------------
 
-## Dusk: everyone heads home. Builders keep repairing (they re-decide on their
-## next think), carriers deliver what they are carrying first, and the
+## Dusk: everyone heads home. Builders stop repairing too (unless
+## `repair_at_night`), carriers deliver what they are carrying first, and the
 ## commuter remembers its mine so it can go back at dawn.
 func on_night_started() -> void:
 	for id in store.size():
@@ -476,7 +485,8 @@ func on_night_started() -> void:
 			_commuter_mine = store.target[id]
 			store.target[id] = UnitStore.NONE
 			store.state[id] = UnitStore.State.IDLE
-		if store.state[id] == UnitStore.State.WORKING and store.job[id] != JobBoard.Kind.REPAIR:
+		if store.state[id] == UnitStore.State.WORKING and (store.job[id] != JobBoard.Kind.REPAIR
+				or not repair_at_night):
 			_stop_working(id)   # a half-built site keeps its progress
 		if store.kind[id] == WorkerRoster.Kind.EXPLORER and store.state[id] == UnitStore.State.WALKING \
 				and store.task[id] != UnitStore.Task.GO_HOME:
@@ -534,8 +544,9 @@ func step(dt: float) -> void:
 ## By day, builders: build > repair > fill > cobble > chop, then go home;
 ## carriers fetch drops, then go home.
 ##
-## At night everyone stays home, with one exception: builders still repair
-## damaged buildings, which means leaving the house to do it.
+## At night everyone stays home. Builders repair only by day, unless
+## `repair_at_night` is on (a city hall priority, later): then they still
+## take repair jobs at night, which means leaving the house to do it.
 ## Miners: to their mine's home if they have one, else home (the commuter's
 ## house by the base, or the base itself for miners not yet sent).
 func _think(id: int) -> void:
@@ -544,7 +555,9 @@ func _think(id: int) -> void:
 		return
 	match store.kind[id]:
 		WorkerRoster.Kind.BUILDER:
-			if not _take_job(id, [JobBoard.Kind.REPAIR] if night else []):
+			if night and not repair_at_night:
+				_go_home_if_away(id)
+			elif not _take_job(id, [JobBoard.Kind.REPAIR] if night else []):
 				_go_home_if_away(id)
 		WorkerRoster.Kind.CARRIER:
 			if night or not _take_drop(id):
@@ -570,22 +583,28 @@ func _think(id: int) -> void:
 
 ## True if this point is on a road tile. Arithmetic, not world_to_cell (two
 ## engine calls): every walking unit asks this every tick.
-func _on_road(p: Vector2) -> bool:
+## How fast a worker walks on the tile under `p`: ROAD_SPEED on a road,
+## SNOW_SPEED in snow (Stage 10), else 1. Plain arithmetic, no engine calls.
+func _ground_speed(p: Vector2) -> float:
 	var g := level.grid
 	var cx := floori((p.x - _grid_origin.x) * _inv_tile)
 	var cy := floori((p.y - _grid_origin.y) * _inv_tile)
 	if cx < 0 or cy < 0 or cx >= g.size.x or cy >= g.size.y:
-		return false
-	return (g.blocking[cy * g.size.x + cx] & WorldGrid.IS_ROAD) != 0
+		return 1.0
+	var i := cy * g.size.x + cx
+	if (g.blocking[i] & WorldGrid.IS_ROAD) != 0:
+		return WorldGrid.ROAD_SPEED
+	if g.ground[i] == WorldGrid.Ground.SNOW:
+		return WorldGrid.SNOW_SPEED
+	return 1.0
 
 
 func _move(id: int, dt: float) -> void:
 	var points: PackedVector2Array = store.path[id]
 	var i: int = store.path_i[id]
 	var p: Vector2 = store.pos[id]
-	var remaining := _stat(store.kind[id], Stats.Id.MOVE_SPEED) * dt
-	if _on_road(p):
-		remaining *= WorldGrid.ROAD_SPEED   # roads (Stage 6)
+	# Roads (Stage 6) speed workers up; snow (Stage 10) slows them.
+	var remaining := _stat(store.kind[id], Stats.Id.MOVE_SPEED) * dt * _ground_speed(p)
 	while remaining > 0.0 and i < points.size():
 		var to := points[i]
 		var d := p.distance_to(to)
@@ -661,9 +680,9 @@ func _take_job(id: int, only: Array = []) -> bool:
 		var cells: Array[Vector2i]
 		if JobBoard.is_tile_job(kind):
 			# Stand next to the tile: lava and water can't be stood on.
-			cells = pathing.cells_to_building(from, level.grid.cell_at(b), Vector2i.ONE)
+			cells = builder_pathing.cells_to_building(from, level.grid.cell_at(b), Vector2i.ONE)
 		else:
-			cells = _cells_to(from, b)
+			cells = _cells_to(from, b, true)
 		tries += 1
 		if not cells.is_empty():
 			store.target[id] = b
@@ -861,16 +880,18 @@ func _pop_drop(mine: int) -> bool:
 	var kind := ResourceKind.id_from_source(level.store.get_type(mine))
 	if kind == -1:
 		return false
-	return _pop_drop_at(level.store.get_cell(mine), level.store.get_size(mine), kind, mine)
+	# Mines drop right beside themselves (1 tile, tuned after Stage 10).
+	return _pop_drop_at(level.store.get_cell(mine), level.store.get_size(mine), kind, mine, 1)
 
 
 ## A drop of `kind` bounces from the footprint at origin/size onto a random free,
-## walkable tile within 2 of it. `source` is the mine it counts against (its
-## cap), or NONE. Returns false if there is nowhere for it to land.
-func _pop_drop_at(origin: Vector2i, size: Vector2i, kind: int, source: int) -> bool:
+## walkable tile within `reach` of it (2 for felled trees, 1 for mines).
+## `source` is the mine it counts against (its cap), or NONE. Returns false if
+## there is nowhere for it to land.
+func _pop_drop_at(origin: Vector2i, size: Vector2i, kind: int, source: int, reach := 2) -> bool:
 	var spots: Array[Vector2i] = []
-	for y in range(origin.y - 2, origin.y + size.y + 2):
-		for x in range(origin.x - 2, origin.x + size.x + 2):
+	for y in range(origin.y - reach, origin.y + size.y + reach):
+		for x in range(origin.x - reach, origin.x + size.x + reach):
 			var c := Vector2i(x, y)
 			if level.grid.in_bounds(c) and not level.grid.is_occupied(c) \
 					and level.grid.is_passable_at(level.grid.index(c)):
@@ -1159,10 +1180,12 @@ func _building_pos(b: int) -> Vector2:
 		+ level.get_footprint_offset(level.store.get_size(b))
 
 
-func _cells_to(from: Vector2i, b: int) -> Array[Vector2i]:
+## `over_walls`: a builder's path, which may cross walls and gates.
+func _cells_to(from: Vector2i, b: int, over_walls := false) -> Array[Vector2i]:
 	if not level.store.is_alive(b):
 		return []
-	return pathing.cells_to_building(from, level.store.get_cell(b), level.store.get_size(b))
+	var p := builder_pathing if over_walls else pathing
+	return p.cells_to_building(from, level.store.get_cell(b), level.store.get_size(b))
 
 
 func _walk_cells(id: int, cells: Array[Vector2i], task: int) -> void:
@@ -1181,7 +1204,7 @@ func _go_home_if_away(id: int) -> void:
 	if _is_beside(id, anchor):
 		store.inside[id] = 1
 		return
-	var cells := _cells_to(_cell_of(id), anchor)
+	var cells := _cells_to(_cell_of(id), anchor, store.kind[id] == WorkerRoster.Kind.BUILDER)
 	if not cells.is_empty():
 		_walk_cells(id, cells, UnitStore.Task.GO_HOME)
 

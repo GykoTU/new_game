@@ -9,8 +9,9 @@ extends RefCounted
 ##
 ##   blueprint cache  teaches a random findable blueprint (Unlocks.pick_findable),
 ##                    then vanishes; relics instead once none is left. Since
-##                    Stage 9 it holds its REGION's tier (the ground under it:
-##                    grass 1, lava or cobble 2, water 3, ice and void 4), a
+##                    Stage 9 it holds its REGION's tier (since Stage 10 the
+##                    region it lies in: valley 1, lava 2, lakes 3, snow and
+##                    void 4; older maps: the ground under it), a
 ##                    lava or water cache first holds the next gate's
 ##                    blueprint, and rares grow likelier with distance.
 ##   dropped blueprint  left by an enemy (add_dropped): holds the blueprint
@@ -46,6 +47,8 @@ var open_seconds := 3.0
 var relics_per_cache := Vector2i(1, 3)
 ## Extra relics in every relic cache (the relic tree's Relic Sense; per run).
 var relic_bonus := 0
+## The run's luck (tuned after Stage 10): relics per cache from a marble bag.
+var luck: Luck
 ## Relics in a blueprint cache once there is no blueprint left to learn.
 var relics_instead_of_blueprint := 2
 ## Chance that a cache's find is rare, near the start and far out (Stage 9):
@@ -169,7 +172,9 @@ func open(id: int) -> String:
 			message = _found(blueprint) if blueprint != "" else "Nothing here."
 			level.remove_building(level.store.get_cell(id))
 		RELIC_CACHE:
-			message = _grant_relics(_rng.randi_range(relics_per_cache.x, relics_per_cache.y) + relic_bonus, "")
+			var n := luck.pick_range("relics", relics_per_cache.x, relics_per_cache.y) if luck != null \
+				else _rng.randi_range(relics_per_cache.x, relics_per_cache.y)
+			message = _grant_relics(n + relic_bonus, "")
 			level.remove_building(level.store.get_cell(id))
 		NPC_HOUSE:
 			_visited[id] = true
@@ -186,7 +191,7 @@ func open(id: int) -> String:
 
 ## The tier of the region a cell lies in: what a cache there holds.
 func region_tier(cell: Vector2i) -> int:
-	return int(LevelGenerator.REGION_TIER.get(level.grid.get_ground(cell), 1))
+	return level.region_tier(cell)   # Stage 10: by region; older maps by ground
 
 
 func rare_chance_at(cell: Vector2i) -> float:
